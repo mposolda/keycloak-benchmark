@@ -19,14 +19,18 @@
 package org.keycloak.benchmark.dataset.config;
 
 import java.lang.reflect.Field;
+import java.util.function.Function;
 
+import org.jboss.logging.Logger;
 import org.jboss.resteasy.spi.HttpRequest;
+import org.keycloak.services.DefaultKeycloakSessionFactory;
 
 /**
  * @author <a href="mailto:mposolda@redhat.com">Marek Posolda</a>
  */
 public class ConfigUtil {
 
+    private static final Logger logger = Logger.getLogger(ConfigUtil.class);
 
     public static <T extends Config> T createConfigFromQueryParams(HttpRequest httpRequest, Class<T> configClass) {
         T config;
@@ -76,5 +80,36 @@ public class ConfigUtil {
         }
 
         return config;
+    }
+
+
+    public static int findFreeEntityIndex(Function<Integer, Boolean> finder) {
+        int lastFound = -1;
+        int lastFailed = -1;
+        int current = 100;
+
+        // Try to find very first entity
+        if (finder.apply(0)) {
+            lastFound = 0;
+        } else {
+            return 0;
+        }
+
+        while (lastFailed == -1 || (lastFailed - lastFound > 1)) {
+            logger.info("Current: " + current);
+            boolean found = finder.apply(current);
+            if (found) {
+                lastFound = current;
+            } else {
+                lastFailed = current;
+            }
+            if (lastFailed == -1) {
+                current = current * 2;
+            } else {
+                current = (lastFound + lastFailed) / 2;
+            }
+        }
+
+        return lastFailed;
     }
 }

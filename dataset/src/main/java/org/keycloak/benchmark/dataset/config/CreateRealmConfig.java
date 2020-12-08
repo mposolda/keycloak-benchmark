@@ -61,49 +61,73 @@ public class CreateRealmConfig implements Config {
 
     @QueryParamIntFill(paramName = "password-hash-iterations", defaultValue = DatasetConstants.DEFAULT_HASH_ITERATIONS) private Integer passwordHashIterations;
 
-
-    public void autoFillFromQueryParams(HttpRequest httpRequest) {
-        for (Field f : getClass().getDeclaredFields()) {
-            QueryParamFill qpf = f.getAnnotation(QueryParamFill.class);
-            if (qpf != null) {
-                String val = httpRequest.getUri().getQueryParameters().getFirst(qpf.paramName());
-                if (val == null) {
-                    if (qpf.required()) {
-                        throw new IllegalStateException("Required parameter " + qpf.paramName() + " not present");
-                    }
-                    val = qpf.defaultValue();
-                }
-                f.setAccessible(true);
-                try {
-                    f.set(this, val);
-                } catch (Exception e) {
-                    throw new RuntimeException("Failed to fill the field " + qpf.paramName());
-                }
-            }
-
-            QueryParamIntFill qpfInt = f.getAnnotation(QueryParamIntFill.class);
-            if (qpfInt != null) {
-                String valStr = httpRequest.getUri().getQueryParameters().getFirst(qpf.paramName());
-                Integer val;
-                if (valStr == null) {
-                    if (qpfInt.required()) {
-                        throw new IllegalStateException("Required parameter " + qpfInt.paramName() + " not present");
-                    }
-                    val = qpfInt.defaultValue();
-                } else {
-                    val = Integer.parseInt(valStr);
-                }
-                f.setAccessible(true);
-                try {
-                    f.set(this, val);
-                } catch (Exception e) {
-                    throw new RuntimeException("Failed to fill the field " + qpfInt.paramName());
-                }
-            }
-        }
+    public String getRealmPrefix() {
+        return realmPrefix;
     }
 
+    public Integer getStart() {
+        return start;
+    }
 
+    public Integer getCount() {
+        return count;
+    }
+
+    public String getRealmRolePrefix() {
+        return realmRolePrefix;
+    }
+
+    public Integer getRealmRolesPerRealm() {
+        return realmRolesPerRealm;
+    }
+
+    public String getClientPrefix() {
+        return clientPrefix;
+    }
+
+    public Integer getClientsPerRealm() {
+        return clientsPerRealm;
+    }
+
+    public String getClientRolePrefix() {
+        return clientRolePrefix;
+    }
+
+    public Integer getClientRolesPerClient() {
+        return clientRolesPerClient;
+    }
+
+    public String getGroupPrefix() {
+        return groupPrefix;
+    }
+
+    public Integer getGroupsPerRealm() {
+        return groupsPerRealm;
+    }
+
+    public String getUserPrefix() {
+        return userPrefix;
+    }
+
+    public Integer getUsersPerRealm() {
+        return usersPerRealm;
+    }
+
+    public Integer getGroupsPerUser() {
+        return groupsPerUser;
+    }
+
+    public Integer getRealmRolesPerUser() {
+        return realmRolesPerUser;
+    }
+
+    public Integer getClientRolesPerUser() {
+        return clientRolesPerUser;
+    }
+
+    public Integer getPasswordHashIterations() {
+        return passwordHashIterations;
+    }
 
     @Override
     public String toString() {

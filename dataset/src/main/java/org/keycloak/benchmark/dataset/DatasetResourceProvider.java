@@ -18,6 +18,8 @@
 
 package org.keycloak.benchmark.dataset;
 
+import java.util.Arrays;
+
 import javax.ws.rs.GET;
 import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
@@ -30,7 +32,18 @@ import org.jboss.resteasy.annotations.cache.NoCache;
 import org.jboss.resteasy.spi.HttpRequest;
 import org.keycloak.benchmark.dataset.config.ConfigUtil;
 import org.keycloak.benchmark.dataset.config.CreateRealmConfig;
+import org.keycloak.models.ClientModel;
+import org.keycloak.models.GroupModel;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.PasswordPolicy;
+import org.keycloak.models.RealmModel;
+import org.keycloak.models.RoleModel;
+import org.keycloak.protocol.oidc.OIDCLoginProtocol;
+import org.keycloak.representations.idm.ClientRepresentation;
+import org.keycloak.representations.idm.RealmRepresentation;
+import org.keycloak.representations.idm.UserRepresentation;
+import org.keycloak.services.managers.ClientManager;
+import org.keycloak.services.managers.RealmManager;
 import org.keycloak.services.resource.RealmResourceProvider;
 
 /**
@@ -81,10 +94,148 @@ public class DatasetResourceProvider implements RealmResourceProvider {
         CreateRealmConfig config = ConfigUtil.createConfigFromQueryParams(httpRequest, CreateRealmConfig.class);
         logger.infof("Trigger creating realms with the configuration: %s", config);
 
+        CreateRealmContext context = new CreateRealmContext(config);
+
+        int availableRealmIndex = ConfigUtil.findFreeEntityIndex(index -> {
+            String realmName = config.getRealmPrefix() + index;
+            return session.realms().getRealmByName(realmName) != null;
+        });
+
+        createAndSetRealm(context, availableRealmIndex, session);
+        createRealmRoles(context);
+        createClients(context, session);
+        createGroups(context);
+
         return Response.ok("{ \"status\": \"OK\" }").build();
     }
 
     @Override
     public void close() {
     }
+
+
+    private void createAndSetRealm(CreateRealmContext context, int index, KeycloakSession session) {
+        CreateRealmConfig config = context.getConfig();
+
+        RealmManager realmManager = new RealmManager(session);
+        RealmRepresentation rep = new RealmRepresentation();
+
+        String realmName = config.getRealmPrefix() + index;
+        rep.setRealm(realmName);
+        rep.setId(realmName);
+        RealmModel realm = realmManager.importRealm(rep);
+
+        realm.setEnabled(true);
+        realm.setRegistrationAllowed(true);
+        realm.setAccessCodeLifespan(60);
+        realm.setPasswordPolicy(PasswordPolicy.parse(session, "hashIterations(" + config.getPasswordHashIterations() + ")"));
+
+        session.getContext().setRealm(realm);
+        context.setRealm(realm);
+    }
+
+    private void createRealmRoles(CreateRealmContext context) {
+        RealmModel realm = context.getRealm();
+
+        for (int i = 0; i < context.getConfig().getRealmRolesPerRealm(); i++) {
+            String roleName = context.getConfig().getRealmRolePrefix() + i;
+            RoleModel role = realm.addRole(roleName);
+            context.realmRoleCreated(role);
+        }
+    }
+
+    private void createClients(CreateRealmContext context, KeycloakSession session) {
+        RealmModel realm = context.getRealm();
+        CreateRealmConfig config = context.getConfig();
+
+        for (int i = 0; i < config.getClientsPerRealm(); i++) {
+            ClientRepresentation client = new ClientRepresentation();
+
+            String clientId = config.getClientPrefix() + i;
+            client.setClientId(clientId);
+            client.setName(clientId);
+            client.setEnabled(true);
+            client.setServiceAccountsEnabled(true);
+            client.setDirectAccessGrantsEnabled(true);
+            client.setSecret(clientId.concat("-secret"));
+            client.setRedirectUris(Arrays.asList("*"));
+            client.setPublicClient(false);
+            client.setProtocol(OIDCLoginProtocol.LOGIN_PROTOCOL);
+
+            ClientModel model = ClientManager.createClient(session, realm, client, true);
+            context.clientCreated(model);
+
+            for (int k = 0; k < config.getClientRolesPerClient() ; k++) {
+                String roleName = clientId + "-" + config.getClientRolePrefix() + k;
+                RoleModel role = model.addRole(roleName);
+                context.clientRoleCreated(model, role);
+            }
+        }
+    }
+
+    private void createGroups(CreateRealmContext context) {
+        RealmModel realm = context.getRealm();
+
+        for (int i = 0; i < context.getConfig().getGroupsPerRealm(); i++) {
+            String groupName = context.getConfig().getGroupPrefix() + i;
+            GroupModel group = realm.createGroup(groupName);
+            context.groupCreated(group);
+        }
+    }
+
+//    private void createUsers(KeycloakSession session) {
+//        RealmModel realm = session.getContext().getRealm();
+//
+//        for (int i = 0; i < 200; i++) {
+//            UserRepresentation rep = new UserRepresentation();
+//
+//            rep.setUsername(String.format("user-%s", i));
+//            rep.setEnabled(true);
+//            rep.setFirstName(rep.getUsername() + "-first");
+//            rep.setLastName(rep.getUsername() + "-last");
+//            rep.setEmail(rep.getUsername() + String.format("@%s.com", realm.getName()));
+//
+//            CredentialRepresentation password = new CredentialRepresentation();
+//            password.setType(CredentialRepresentation.PASSWORD);
+//            password.setValue(String.format("%s-password", rep.getUsername()));
+//            rep.setCredentials(Arrays.asList(password));
+//
+//            UserModel user = session.users().addUser(realm, rep.getUsername());
+//            Set<String> emptySet = Collections.emptySet();
+//
+//            UserResource.updateUserFromRep(user, rep, emptySet, realm, session, false);
+//            RepresentationToModel.createFederatedIdentities(rep, session, realm, user);
+//            RepresentationToModel.createGroups(rep, realm, user);
+//            RepresentationToModel.createCredentials(rep, session, realm, user, true);
+//
+//            List<RoleModel> roles = new ArrayList(realm.getRoles());
+//
+//            Collections.shuffle(roles);
+//
+//            for (RoleModel role : roles.subList(0, 4)) {
+//                if (role.getName().startsWith("role-")) {
+//                    user.grantRole(role);
+//                }
+//            }
+//
+//            List<ClientModel> clients = new ArrayList<>(realm.getClients());
+//
+//            Collections.shuffle(clients);
+//
+//            for (ClientModel client : clients.subList(0, 4)) {
+//                if (client.getClientId().startsWith("client-")) {
+//                    List<RoleModel> clientRoles = new ArrayList(client.getRoles());
+//
+//                    Collections.shuffle(clientRoles);
+//
+//                    for (RoleModel role : clientRoles.subList(0, 4)) {
+//                        if (role.getName().startsWith("client")) {
+//                            user.grantRole(role);
+//                        }
+//                    }
+//                }
+//            }
+//        }
+//    }
+
 }
