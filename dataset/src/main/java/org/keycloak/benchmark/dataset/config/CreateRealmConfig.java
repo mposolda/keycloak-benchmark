@@ -29,7 +29,8 @@ public class CreateRealmConfig implements Config {
 
     @QueryParamFill(paramName = "realm-prefix", defaultValue = DatasetConstants.DEFAULT_REALM_PREFIX) private String realmPrefix;
 
-    @QueryParamIntFill(paramName = "start", defaultValue = DatasetConstants.DEFAULT_REALM_START) private Integer start;
+    // We will find last created realm and start from there
+    private Integer start;
 
     @QueryParamIntFill(paramName = "count", defaultValue = -1, required = true) private Integer count;
 
@@ -63,6 +64,10 @@ public class CreateRealmConfig implements Config {
 
     public String getRealmPrefix() {
         return realmPrefix;
+    }
+
+    public void setStart(Integer start) {
+        this.start = start;
     }
 
     public Integer getStart() {

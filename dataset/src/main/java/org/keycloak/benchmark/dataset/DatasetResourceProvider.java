@@ -19,6 +19,8 @@
 package org.keycloak.benchmark.dataset;
 
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Set;
 
 import javax.ws.rs.GET;
 import javax.ws.rs.Produces;
@@ -38,10 +40,11 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.PasswordPolicy;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.RoleModel;
+import org.keycloak.models.UserCredentialModel;
+import org.keycloak.models.UserModel;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
-import org.keycloak.representations.idm.UserRepresentation;
 import org.keycloak.services.managers.ClientManager;
 import org.keycloak.services.managers.RealmManager;
 import org.keycloak.services.resource.RealmResourceProvider;
@@ -52,7 +55,6 @@ import org.keycloak.services.resource.RealmResourceProvider;
 public class DatasetResourceProvider implements RealmResourceProvider {
 
     protected static final Logger logger = Logger.getLogger(DatasetResourceProvider.class);
-
 
     private final KeycloakSession session;
 
@@ -74,8 +76,7 @@ public class DatasetResourceProvider implements RealmResourceProvider {
     @Produces(MediaType.APPLICATION_JSON)
     public Response createRealms(
             @QueryParam("realm-prefix") String realmPrefix,
-            @QueryParam("start") Integer start,
-            @QueryParam("count") Integer count,
+            @QueryParam("count") Integer count, // NOTE: Start index is not available as parameter as it will be "auto-detected" based on already created realms
             @QueryParam("realm-role-prefix") String realmRolePrefix,
             @QueryParam("realm-roles-per-realm") Integer realmRolesPerRealm,
             @QueryParam("client-prefix") String clientPrefix,
@@ -92,19 +93,22 @@ public class DatasetResourceProvider implements RealmResourceProvider {
             @QueryParam("password-hash-iterations") Integer hashIterations
             ) {
         CreateRealmConfig config = ConfigUtil.createConfigFromQueryParams(httpRequest, CreateRealmConfig.class);
-        logger.infof("Trigger creating realms with the configuration: %s", config);
 
-        CreateRealmContext context = new CreateRealmContext(config);
-
-        int availableRealmIndex = ConfigUtil.findFreeEntityIndex(index -> {
+        int startIndex = ConfigUtil.findFreeEntityIndex(index -> {
             String realmName = config.getRealmPrefix() + index;
             return session.realms().getRealmByName(realmName) != null;
         });
+        config.setStart(startIndex);
+        logger.infof("Will start creating realms from %s", config.getRealmPrefix() + startIndex);
 
-        createAndSetRealm(context, availableRealmIndex, session);
+        logger.infof("Trigger creating realms with the configuration: %s", config);
+        CreateRealmContext context = new CreateRealmContext(config);
+
+        createAndSetRealm(context, startIndex, session);
         createRealmRoles(context);
         createClients(context, session);
         createGroups(context);
+        createUsers(context, session);
 
         return Response.ok("{ \"status\": \"OK\" }").build();
     }
@@ -183,30 +187,31 @@ public class DatasetResourceProvider implements RealmResourceProvider {
         }
     }
 
-//    private void createUsers(KeycloakSession session) {
-//        RealmModel realm = session.getContext().getRealm();
-//
-//        for (int i = 0; i < 200; i++) {
-//            UserRepresentation rep = new UserRepresentation();
-//
-//            rep.setUsername(String.format("user-%s", i));
-//            rep.setEnabled(true);
-//            rep.setFirstName(rep.getUsername() + "-first");
-//            rep.setLastName(rep.getUsername() + "-last");
-//            rep.setEmail(rep.getUsername() + String.format("@%s.com", realm.getName()));
-//
-//            CredentialRepresentation password = new CredentialRepresentation();
-//            password.setType(CredentialRepresentation.PASSWORD);
-//            password.setValue(String.format("%s-password", rep.getUsername()));
-//            rep.setCredentials(Arrays.asList(password));
-//
-//            UserModel user = session.users().addUser(realm, rep.getUsername());
-//            Set<String> emptySet = Collections.emptySet();
-//
-//            UserResource.updateUserFromRep(user, rep, emptySet, realm, session, false);
+    private void createUsers(CreateRealmContext context, KeycloakSession session) {
+        RealmModel realm = context.getRealm();
+        CreateRealmConfig config = context.getConfig();
+
+        for (int i = 0; i < config.getUsersPerRealm(); i++) {
+            String username = config.getUserPrefix() + i;
+            UserModel user = session.users().addUser(realm, username);
+            user.setEnabled(true);
+            user.setFirstName(username + "-first");
+            user.setLastName(username + "-last");
+            user.setEmail(username + String.format("@%s.com", realm.getName()));
+
+            // Set<String> emptySet = Collections.emptySet();
+
+            // UserResource.updateUserFromRep(user, rep, emptySet, realm, session, false);
+
+            // TODO:mposolda finish...
 //            RepresentationToModel.createFederatedIdentities(rep, session, realm, user);
 //            RepresentationToModel.createGroups(rep, realm, user);
 //            RepresentationToModel.createCredentials(rep, session, realm, user, true);
+            String password = String.format("%s-password", username);
+            session.userCredentialManager().updateCredential(realm, user, UserCredentialModel.password(password, false));
+
+
+            // TODO:mposolda finish...
 //
 //            List<RoleModel> roles = new ArrayList(realm.getRoles());
 //
@@ -235,7 +240,7 @@ public class DatasetResourceProvider implements RealmResourceProvider {
 //                    }
 //                }
 //            }
-//        }
-//    }
+        }
+    }
 
 }

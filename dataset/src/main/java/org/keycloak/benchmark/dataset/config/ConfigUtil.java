@@ -23,7 +23,6 @@ import java.util.function.Function;
 
 import org.jboss.logging.Logger;
 import org.jboss.resteasy.spi.HttpRequest;
-import org.keycloak.services.DefaultKeycloakSessionFactory;
 
 /**
  * @author <a href="mailto:mposolda@redhat.com">Marek Posolda</a>
@@ -32,6 +31,15 @@ public class ConfigUtil {
 
     private static final Logger logger = Logger.getLogger(ConfigUtil.class);
 
+
+    /**
+     * Create the config class based on the HTTP query parameters and the defaults.
+     *
+     * @param httpRequest
+     * @param configClass
+     * @param <T>
+     * @return
+     */
     public static <T extends Config> T createConfigFromQueryParams(HttpRequest httpRequest, Class<T> configClass) {
         T config;
         try {
@@ -83,6 +91,15 @@ public class ConfigUtil {
     }
 
 
+    /**
+     * Find the first available index where the new entities can be created.
+     *
+     * For example if there are already realms "realm0, realm1, ... realm157", then this method will return 158, which means
+     * that we can start creating realms from "realm158" and bigger.
+     *
+     * @param finder
+     * @return
+     */
     public static int findFreeEntityIndex(Function<Integer, Boolean> finder) {
         int lastFound = -1;
         int lastFailed = -1;
@@ -96,7 +113,7 @@ public class ConfigUtil {
         }
 
         while (lastFailed == -1 || (lastFailed - lastFound > 1)) {
-            logger.info("Current: " + current);
+            //logger.info("Current: " + current);
             boolean found = finder.apply(current);
             if (found) {
                 lastFound = current;
