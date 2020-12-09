@@ -25,7 +25,7 @@ import org.keycloak.credential.hash.Pbkdf2PasswordHashProviderFactory;
  */
 public class DatasetConstants {
 
-    public static final String DEFAULT_REALM_PREFIX = "realm-";
+    public static final String DEFAULT_REALM_PREFIX = "realm";
 
     /**
      * -1 means that we will try to "auto-guess" where to start based on realms available

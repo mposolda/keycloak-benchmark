@@ -48,8 +48,8 @@ public class CreateRealmContext {
 
     private final List<RoleModel> realmRoles = new ArrayList<>();
 
-    // Key is clientId
-    private final Map<String, List<RoleModel>> clientRoles = new HashMap<>();
+    // All client roles of all clients
+    private final List<RoleModel> clientRoles = new ArrayList<>();
 
     private final List<GroupModel> groups = new ArrayList<>();
 
@@ -88,15 +88,10 @@ public class CreateRealmContext {
     }
 
     public void clientRoleCreated(ClientModel client, RoleModel clientRole) {
-        List<RoleModel> currentClientRoles = this.clientRoles.get(client.getClientId());
-        if (currentClientRoles == null) {
-            currentClientRoles = new ArrayList<>();
-            this.clientRoles.put(client.getClientId(), currentClientRoles);
-        }
-        currentClientRoles.add(clientRole);
+        this.clientRoles.add(clientRole);
     }
 
-    public Map<String, List<RoleModel>> getClientRoles() {
+    public List<RoleModel> getClientRoles() {
         return clientRoles;
     }
 
@@ -106,6 +101,10 @@ public class CreateRealmContext {
 
     public List<GroupModel> getGroups() {
         return groups;
+    }
+
+    public void userCreated(UserModel user) {
+        this.users.add(user);
     }
 
     public List<UserModel> getUsers() {

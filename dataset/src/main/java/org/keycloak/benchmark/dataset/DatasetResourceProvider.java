@@ -18,8 +18,10 @@
 
 package org.keycloak.benchmark.dataset;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 
 import javax.ws.rs.GET;
@@ -100,15 +102,30 @@ public class DatasetResourceProvider implements RealmResourceProvider {
         });
         config.setStart(startIndex);
         logger.infof("Will start creating realms from %s", config.getRealmPrefix() + startIndex);
-
         logger.infof("Trigger creating realms with the configuration: %s", config);
+        TimerLogger timerLogger = TimerLogger.start("Start creation of realm " + config.getRealmPrefix() + startIndex);
+
         CreateRealmContext context = new CreateRealmContext(config);
 
         createAndSetRealm(context, startIndex, session);
+        // TODO:mposolda debug
+        timerLogger.info(logger, "Created realm %s", context.getRealm().getName());
+
         createRealmRoles(context);
+        // TODO:mposolda debug
+        timerLogger.info(logger, "Created %d roles in realm %s", context.getRealmRoles().size(), context.getRealm().getName());
+
         createClients(context, session);
+        // TODO:mposolda debug
+        timerLogger.info(logger, "Created %d clients in realm %s", context.getClients().size(), context.getRealm().getName());
+
         createGroups(context);
-        createUsers(context, session);
+        // TODO:mposolda debug
+        timerLogger.info(logger, "Created %d groups in realm %s", context.getGroups().size(), context.getRealm().getName());
+
+        createUsers(context, timerLogger, session);
+
+        timerLogger.info(logger, "Created %d users in realm %s", context.getUsers().size(), context.getRealm().getName());
 
         return Response.ok("{ \"status\": \"OK\" }").build();
     }
@@ -187,7 +204,7 @@ public class DatasetResourceProvider implements RealmResourceProvider {
         }
     }
 
-    private void createUsers(CreateRealmContext context, KeycloakSession session) {
+    private void createUsers(CreateRealmContext context, TimerLogger timerLogger, KeycloakSession session) {
         RealmModel realm = context.getRealm();
         CreateRealmConfig config = context.getConfig();
 
@@ -199,47 +216,37 @@ public class DatasetResourceProvider implements RealmResourceProvider {
             user.setLastName(username + "-last");
             user.setEmail(username + String.format("@%s.com", realm.getName()));
 
-            // Set<String> emptySet = Collections.emptySet();
-
-            // UserResource.updateUserFromRep(user, rep, emptySet, realm, session, false);
-
-            // TODO:mposolda finish...
-//            RepresentationToModel.createFederatedIdentities(rep, session, realm, user);
-//            RepresentationToModel.createGroups(rep, realm, user);
-//            RepresentationToModel.createCredentials(rep, session, realm, user, true);
             String password = String.format("%s-password", username);
             session.userCredentialManager().updateCredential(realm, user, UserCredentialModel.password(password, false));
 
+            // Detect which roles we assign to the user
+            int roleIndexStartForCurrentUser = (i * config.getRealmRolesPerUser());
+            for (int j = roleIndexStartForCurrentUser ; j < roleIndexStartForCurrentUser + config.getRealmRolesPerUser() ; j++) {
+                int roleIndex = j % config.getRealmRolesPerRealm();
+                user.grantRole(context.getRealmRoles().get(roleIndex));
+                logger.tracef("Assigned role %s to the user %s", context.getRealmRoles().get(roleIndex).getName(), user.getUsername());
+            }
 
-            // TODO:mposolda finish...
-//
-//            List<RoleModel> roles = new ArrayList(realm.getRoles());
-//
-//            Collections.shuffle(roles);
-//
-//            for (RoleModel role : roles.subList(0, 4)) {
-//                if (role.getName().startsWith("role-")) {
-//                    user.grantRole(role);
-//                }
-//            }
-//
-//            List<ClientModel> clients = new ArrayList<>(realm.getClients());
-//
-//            Collections.shuffle(clients);
-//
-//            for (ClientModel client : clients.subList(0, 4)) {
-//                if (client.getClientId().startsWith("client-")) {
-//                    List<RoleModel> clientRoles = new ArrayList(client.getRoles());
-//
-//                    Collections.shuffle(clientRoles);
-//
-//                    for (RoleModel role : clientRoles.subList(0, 4)) {
-//                        if (role.getName().startsWith("client")) {
-//                            user.grantRole(role);
-//                        }
-//                    }
-//                }
-//            }
+            int clientRolesTotal = context.getClientRoles().size();
+            int clientRoleIndexStartForCurrentUser = (i * config.getClientRolesPerUser());
+            for (int j = clientRoleIndexStartForCurrentUser ; j < clientRoleIndexStartForCurrentUser + config.getClientRolesPerUser() ; j++) {
+                int roleIndex = j % clientRolesTotal;
+                user.grantRole(context.getClientRoles().get(roleIndex));
+                logger.tracef("Assigned role %s to the user %s", context.getClientRoles().get(roleIndex).getName(), user.getUsername());
+            }
+
+            // Detect which groups we assign to the user
+            int groupIndexStartForCurrentUser = (i * config.getGroupsPerUser());
+            for (int j = groupIndexStartForCurrentUser ; j < groupIndexStartForCurrentUser + config.getGroupsPerUser() ; j++) {
+                int groupIndex = j % config.getGroupsPerRealm();
+                user.joinGroup(context.getGroups().get(groupIndex));
+                logger.tracef("Assigned group %s to the user %s", context.getGroups().get(groupIndex).getName(), user.getUsername());
+            }
+
+            context.userCreated(user);
+            if ((i + 1) % 10 == 0) {
+                timerLogger.info(logger, "Created %d users in realm %s", context.getUsers().size(), context.getRealm().getName());
+            }
         }
     }
 
