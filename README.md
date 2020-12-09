@@ -11,4 +11,4 @@ IN STANDALONE.XML
 
 REQUEST:
 
-http://localhost:8080/auth/realms/master/dataset?count=100
+http://localhost:8080/auth/realms/master/dataset/create-realms?count=100

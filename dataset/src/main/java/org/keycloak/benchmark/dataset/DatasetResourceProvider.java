@@ -23,9 +23,12 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 import javax.ws.rs.GET;
+import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Context;
@@ -80,6 +83,7 @@ public class DatasetResourceProvider implements RealmResourceProvider {
 
     // See "CreateRealmConfig" class for the list of available query parameters
     @GET
+    @Path("/create-realms")
     @NoCache
     @Produces(MediaType.APPLICATION_JSON)
     public Response createRealms() {
@@ -96,6 +100,7 @@ public class DatasetResourceProvider implements RealmResourceProvider {
 
         CreateRealmContext context = new CreateRealmContext(config);
 
+        // Step 1 - create realm, realmRoles and groups
         KeycloakModelUtils.runJobInTransactionWithTimeout(baseSession.getKeycloakSessionFactory(), session -> {
             createAndSetRealm(context, startIndex, session);
             timerLogger.debug(logger, "Created realm %s", context.getRealm().getName());
@@ -105,10 +110,11 @@ public class DatasetResourceProvider implements RealmResourceProvider {
 
             createGroups(context);
             timerLogger.debug(logger, "Created %d groups in realm %s", context.getGroups().size(), context.getRealm().getName());
-            timerLogger.info(logger, "Created realm, realm roles and groups in realm %s", context.getGroups().size(), context.getRealm().getName());
+            timerLogger.info(logger, "Created realm, realm roles and groups in realm %s", context.getRealm().getName());
 
         }, config.getTransactionTimeoutInSeconds());
 
+        // Step 2 - create clients (Using single executor for now... For multiple executors run separate create-clients endpoint)
         for (int i = 0 ; i<config.getClientsPerRealm() ; i += config.getClientsPerTransaction()) {
             int clientsStartIndex = i;
             int endIndex = Math.min(clientsStartIndex + config.getClientsPerTransaction(), config.getClientsPerRealm());
@@ -120,66 +126,14 @@ public class DatasetResourceProvider implements RealmResourceProvider {
 
             }, config.getTransactionTimeoutInSeconds());
 
+            timerLogger.debug(logger, "Created %d clients in realm %s", context.getClients().size(), context.getRealm().getName());
         }
+        timerLogger.info(logger, "Created all %d clients in realm %s", context.getClients().size(), context.getRealm().getName());
 
-        // This will cache the realm (looks like best regarding performance to do it in separate transaction)
-        KeycloakModelUtils.runJobInTransactionWithTimeout(baseSession.getKeycloakSessionFactory(), session -> {
+        // Step 3 - cache realm. This will cache the realm in Keycloak cache (looks like best regarding performance to do it in separate transaction)
+        cacheRealmAndPopulateContext(context);
 
-            RealmModel realm = session.realms().getRealm(context.getRealm().getId());
-            context.setRealm(realm);
-
-            Set<RoleModel> roles = realm.getRoles();
-            List<RoleModel> sortedRoles = roles.stream()
-                    .filter(roleModel -> roleModel.getName().startsWith(context.getConfig().getRealmRolePrefix()))
-                    .sorted((role1, role2) -> {
-                        String name1 = role1.getName().substring(context.getConfig().getRealmRolePrefix().length());
-                        String name2 = role2.getName().substring(context.getConfig().getRealmRolePrefix().length());
-                        return Integer.parseInt(name1) - Integer.parseInt(name2);
-                    })
-                    .collect(Collectors.toList());
-            context.setRealmRoles(sortedRoles);
-
-            List<GroupModel> groups = realm.getGroups();
-            List<GroupModel> sortedGroups = groups.stream()
-                    .filter(groupModel -> groupModel.getName().startsWith(context.getConfig().getGroupPrefix()))
-                    .sorted((group1, group2) -> {
-                        String name1 = group1.getName().substring(context.getConfig().getGroupPrefix().length());
-                        String name2 = group2.getName().substring(context.getConfig().getGroupPrefix().length());
-                        return Integer.parseInt(name1) - Integer.parseInt(name2);
-                    })
-                    .collect(Collectors.toList());
-            context.setGroups(sortedGroups);
-
-            List<ClientModel> clients = realm.getClients();
-            List<RoleModel> sortedClientRoles = new ArrayList<>();
-            List<ClientModel> sortedClients = clients.stream()
-                    .filter(clientModel -> clientModel.getClientId().startsWith(context.getConfig().getClientPrefix()))
-                    .sorted((client1, client2) -> {
-                        String name1 = client1.getClientId().substring(context.getConfig().getClientPrefix().length());
-                        String name2 = client2.getClientId().substring(context.getConfig().getClientPrefix().length());
-                        return Integer.parseInt(name1) - Integer.parseInt(name2);
-                    })
-                    .peek(client -> {
-                        // Sort client roles and add to the shared list
-                        List<RoleModel> currentClientRoles = client.getRoles().stream()
-                                .filter(roleModel -> roleModel.getName().startsWith(context.getConfig().getClientPrefix()))
-                                .sorted((role1, role2) -> {
-                                    int index1 = role1.getName().indexOf(context.getConfig().getClientRolePrefix()) + context.getConfig().getClientRolePrefix().length();
-                                    int index2 = role2.getName().indexOf(context.getConfig().getClientRolePrefix()) + context.getConfig().getClientRolePrefix().length();
-                                    String name1 = role1.getName().substring(index1);
-                                    String name2 = role2.getName().substring(index2);
-                                    return Integer.parseInt(name1) - Integer.parseInt(name2);
-                                })
-                                .collect(Collectors.toList());
-                        sortedClientRoles.addAll(currentClientRoles);
-
-                    })
-                    .collect(Collectors.toList());
-            context.setClients(sortedClients);
-            context.setClientRoles(sortedClientRoles);
-
-        }, config.getTransactionTimeoutInSeconds());
-
+        // Step 4 - create users
         for (int i = 0 ; i<config.getUsersPerRealm() ; i += config.getUsersPerTransaction()) {
             int usersStartIndex = i;
             int endIndex = Math.min(usersStartIndex + config.getUsersPerTransaction(), config.getUsersPerRealm());
@@ -191,9 +145,10 @@ public class DatasetResourceProvider implements RealmResourceProvider {
 
             }, config.getTransactionTimeoutInSeconds());
 
+            timerLogger.debug(logger, "Created %d users in realm %s", context.getUsers().size(), context.getRealm().getName());
         }
 
-        timerLogger.info(logger, "Finished realm %s", context.getRealm().getName());
+        timerLogger.info(logger, "Created all %d users in realm %s. Finished creation of realm.", context.getUsers().size(), context.getRealm().getName());
 
         // TODO: More details in the response?
         return Response.ok("{ \"status\": \"OK\" }").build();
@@ -273,7 +228,7 @@ public class DatasetResourceProvider implements RealmResourceProvider {
             }
         }
 
-        timerLogger.info(logger, "Created %d clients in realm %s", context.getClients().size(), context.getRealm().getName());
+        timerLogger.debug(logger, "Created %d clients in realm %s", context.getClients().size(), context.getRealm().getName());
     }
 
     private void createGroups(CreateRealmContext context) {
@@ -328,8 +283,68 @@ public class DatasetResourceProvider implements RealmResourceProvider {
 
             context.userCreated(user);
         }
+    }
 
-        timerLogger.info(logger, "Created %d users in realm %s", context.getUsers().size(), context.getRealm().getName());
+
+    private void cacheRealmAndPopulateContext(CreateRealmContext context) {
+        CreateRealmConfig config = context.getConfig();
+
+        KeycloakModelUtils.runJobInTransactionWithTimeout(baseSession.getKeycloakSessionFactory(), session -> {
+
+            RealmModel realm = session.realms().getRealm(context.getRealm().getId());
+            context.setRealm(realm);
+
+            Set<RoleModel> roles = realm.getRoles();
+            List<RoleModel> sortedRoles = roles.stream()
+                    .filter(roleModel -> roleModel.getName().startsWith(config.getRealmRolePrefix()))
+                    .sorted((role1, role2) -> {
+                        String name1 = role1.getName().substring(config.getRealmRolePrefix().length());
+                        String name2 = role2.getName().substring(config.getRealmRolePrefix().length());
+                        return Integer.parseInt(name1) - Integer.parseInt(name2);
+                    })
+                    .collect(Collectors.toList());
+            context.setRealmRoles(sortedRoles);
+
+            List<GroupModel> groups = realm.getGroups();
+            List<GroupModel> sortedGroups = groups.stream()
+                    .filter(groupModel -> groupModel.getName().startsWith(config.getGroupPrefix()))
+                    .sorted((group1, group2) -> {
+                        String name1 = group1.getName().substring(config.getGroupPrefix().length());
+                        String name2 = group2.getName().substring(config.getGroupPrefix().length());
+                        return Integer.parseInt(name1) - Integer.parseInt(name2);
+                    })
+                    .collect(Collectors.toList());
+            context.setGroups(sortedGroups);
+
+            List<ClientModel> clients = realm.getClients();
+            List<RoleModel> sortedClientRoles = new ArrayList<>();
+            List<ClientModel> sortedClients = clients.stream()
+                    .filter(clientModel -> clientModel.getClientId().startsWith(config.getClientPrefix()))
+                    .sorted((client1, client2) -> {
+                        String name1 = client1.getClientId().substring(config.getClientPrefix().length());
+                        String name2 = client2.getClientId().substring(config.getClientPrefix().length());
+                        return Integer.parseInt(name1) - Integer.parseInt(name2);
+                    })
+                    .peek(client -> {
+                        // Sort client roles and add to the shared list
+                        List<RoleModel> currentClientRoles = client.getRoles().stream()
+                                .filter(roleModel -> roleModel.getName().startsWith(config.getClientPrefix()))
+                                .sorted((role1, role2) -> {
+                                    int index1 = role1.getName().indexOf(config.getClientRolePrefix()) + config.getClientRolePrefix().length();
+                                    int index2 = role2.getName().indexOf(config.getClientRolePrefix()) + config.getClientRolePrefix().length();
+                                    String name1 = role1.getName().substring(index1);
+                                    String name2 = role2.getName().substring(index2);
+                                    return Integer.parseInt(name1) - Integer.parseInt(name2);
+                                })
+                                .collect(Collectors.toList());
+                        sortedClientRoles.addAll(currentClientRoles);
+
+                    })
+                    .collect(Collectors.toList());
+            context.setClients(sortedClients);
+            context.setClientRoles(sortedClientRoles);
+
+        }, config.getTransactionTimeoutInSeconds());
     }
 
 }
