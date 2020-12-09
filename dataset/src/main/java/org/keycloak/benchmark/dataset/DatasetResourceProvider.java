@@ -41,9 +41,11 @@ import org.keycloak.models.GroupModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.PasswordPolicy;
 import org.keycloak.models.RealmModel;
+import org.keycloak.models.RealmProvider;
 import org.keycloak.models.RoleModel;
 import org.keycloak.models.UserCredentialModel;
 import org.keycloak.models.UserModel;
+import org.keycloak.models.cache.CacheRealmProvider;
 import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.representations.idm.ClientRepresentation;
@@ -75,29 +77,11 @@ public class DatasetResourceProvider implements RealmResourceProvider {
     }
 
 
+    // See "CreateRealmConfig" class for the list of available query parameters
     @GET
     @NoCache
     @Produces(MediaType.APPLICATION_JSON)
-    public Response createRealms(
-            @QueryParam("realm-prefix") String realmPrefix,
-            @QueryParam("count") Integer count, // NOTE: Start index is not available as parameter as it will be "auto-detected" based on already created realms
-            @QueryParam("realm-role-prefix") String realmRolePrefix,
-            @QueryParam("realm-roles-per-realm") Integer realmRolesPerRealm,
-            @QueryParam("client-prefix") String clientPrefix,
-            @QueryParam("clients-per-realm") Integer clientsPerRealm,
-            @QueryParam("client-role-prefix") String clientRolePrefix,
-            @QueryParam("client-roles-per-client") Integer clientRolesPerClient,
-            @QueryParam("group-prefix") String groupPrefix,
-            @QueryParam("groups-per-realm") Integer groupsPerRealm,
-            @QueryParam("user-prefix") String userPrefix,
-            @QueryParam("users-per-realm") String usersPerRealm,
-            @QueryParam("groups-per-user") String groupsPerUser,
-            @QueryParam("realm-roles-per-user") String realmRolesPerUser,
-            @QueryParam("client-roles-per-user") String clientRolesPerUser,
-            @QueryParam("password-hash-iterations") Integer hashIterations,
-            @QueryParam("transaction-timeout") Integer transactionTimeoutInSeconds,
-            @QueryParam("users-per-transaction") Integer usersPerTransaction
-            ) {
+    public Response createRealms() {
         CreateRealmConfig config = ConfigUtil.createConfigFromQueryParams(httpRequest, CreateRealmConfig.class);
 
         int startIndex = ConfigUtil.findFreeEntityIndex(index -> {
@@ -118,14 +102,24 @@ public class DatasetResourceProvider implements RealmResourceProvider {
             createRealmRoles(context);
             timerLogger.debug(logger, "Created %d roles in realm %s", context.getRealmRoles().size(), context.getRealm().getName());
 
-            createClients(context, session);
-            timerLogger.debug(logger, "Created %d clients in realm %s", context.getClients().size(), context.getRealm().getName());
-
             createGroups(context);
             timerLogger.debug(logger, "Created %d groups in realm %s", context.getGroups().size(), context.getRealm().getName());
-            timerLogger.info(logger, "Created realm, roles and groups in realm %s", context.getGroups().size(), context.getRealm().getName());
+            timerLogger.info(logger, "Created realm, realm roles and groups in realm %s", context.getGroups().size(), context.getRealm().getName());
 
         }, config.getTransactionTimeoutInSeconds());
+
+        for (int i = 0 ; i<config.getClientsPerRealm() ; i += config.getClientsPerTransaction()) {
+            int clientsStartIndex = i;
+            int endIndex = Math.min(clientsStartIndex + config.getClientsPerTransaction(), config.getClientsPerRealm());
+            logger.tracef("clientsStartIndex: %d, clientsEndIndex: %d", clientsStartIndex, endIndex);
+
+            KeycloakModelUtils.runJobInTransactionWithTimeout(baseSession.getKeycloakSessionFactory(), session -> {
+
+                createClients(context, timerLogger, session, clientsStartIndex, endIndex);
+
+            }, config.getTransactionTimeoutInSeconds());
+
+        }
 
         // This will cache the realm (looks like best regarding performance to do it in separate transaction)
         KeycloakModelUtils.runJobInTransactionWithTimeout(baseSession.getKeycloakSessionFactory(), session -> {
@@ -142,7 +136,7 @@ public class DatasetResourceProvider implements RealmResourceProvider {
         for (int i = 0 ; i<config.getUsersPerRealm() ; i += config.getUsersPerTransaction()) {
             int usersStartIndex = i;
             int endIndex = Math.min(usersStartIndex + config.getUsersPerTransaction(), config.getUsersPerRealm());
-            logger.infof("usersStartIndex: %d, usersEndIndex: %d", usersStartIndex, endIndex);
+            logger.tracef("usersStartIndex: %d, usersEndIndex: %d", usersStartIndex, endIndex);
 
             KeycloakModelUtils.runJobInTransactionWithTimeout(baseSession.getKeycloakSessionFactory(), session -> {
 
@@ -193,11 +187,22 @@ public class DatasetResourceProvider implements RealmResourceProvider {
         }
     }
 
-    private void createClients(CreateRealmContext context, KeycloakSession session) {
+    private void createClients(CreateRealmContext context, TimerLogger timerLogger, KeycloakSession session, int startIndex, int endIndex) {
         RealmModel realm = context.getRealm();
+
+        // Eagerly register invalidation to make sure we don't cache the realm in this transaction. Caching will result in bunch of
+        // unneeded SQL queries (triggered from constructor of org.keycloak.models.cache.infinispan.entities.CachedRealm) and we need to invalidate realm anyway in this transaction
+        RealmProvider realmProvider = session.realms();
+        if (realmProvider instanceof CacheRealmProvider) {
+            ((CacheRealmProvider) realmProvider).registerRealmInvalidation(realm.getId(), realm.getName());
+        }
+
+        // Refresh realm in current transaction
+        realm = realmProvider.getRealm(realm.getId());
+
         CreateRealmConfig config = context.getConfig();
 
-        for (int i = 0; i < config.getClientsPerRealm(); i++) {
+        for (int i = startIndex; i < endIndex; i++) {
             ClientRepresentation client = new ClientRepresentation();
 
             String clientId = config.getClientPrefix() + i;
@@ -220,6 +225,8 @@ public class DatasetResourceProvider implements RealmResourceProvider {
                 context.clientRoleCreated(model, role);
             }
         }
+
+        timerLogger.info(logger, "Created %d clients in realm %s", context.getClients().size(), context.getRealm().getName());
     }
 
     private void createGroups(CreateRealmContext context) {
@@ -273,9 +280,6 @@ public class DatasetResourceProvider implements RealmResourceProvider {
             }
 
             context.userCreated(user);
-            if ((i + 1) % 10 == 0) {
-                timerLogger.debug(logger, "Created %d users in realm %s", context.getUsers().size(), context.getRealm().getName());
-            }
         }
 
         timerLogger.info(logger, "Created %d users in realm %s", context.getUsers().size(), context.getRealm().getName());

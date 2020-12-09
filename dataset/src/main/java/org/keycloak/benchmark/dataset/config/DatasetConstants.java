@@ -35,6 +35,8 @@ public class DatasetConstants {
 
     public static final int DEFAULT_CLIENTS_PER_REALM = 30;
 
+    public static final int DEFAULT_CLIENTS_PER_TRANSACTION = 10;
+
     public static final String DEFAULT_CLIENT_ROLE_PREFIX = "client-role-";
 
     public static final int DEFAULT_CLIENT_ROLES_PER_CLIENT = 10;
@@ -57,7 +59,7 @@ public class DatasetConstants {
 
     public static final int DEFAULT_TRANSACTION_TIMEOUT_SEC = 300;
 
-    public static final int DEFAULT_USERS_PER_TRANSACTION = 100;
+    public static final int DEFAULT_USERS_PER_TRANSACTION = 10;
 
 
 }

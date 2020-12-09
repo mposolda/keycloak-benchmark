@@ -18,8 +18,6 @@
 
 package org.keycloak.benchmark.dataset.config;
 
-import javax.ws.rs.QueryParam;
-
 /**
  * @author <a href="mailto:mposolda@redhat.com">Marek Posolda</a>
  */
@@ -27,7 +25,7 @@ public class CreateRealmConfig implements Config {
 
     @QueryParamFill(paramName = "realm-prefix", defaultValue = DatasetConstants.DEFAULT_REALM_PREFIX) private String realmPrefix;
 
-    // We will find last created realm and start from there
+    // NOTE: Start index is not available as parameter as it will be "auto-detected" based on already created realms
     private Integer start;
 
     @QueryParamIntFill(paramName = "count", defaultValue = -1, required = true) private Integer count;
@@ -39,6 +37,8 @@ public class CreateRealmConfig implements Config {
     @QueryParamFill(paramName = "client-prefix", defaultValue = DatasetConstants.DEFAULT_CLIENT_PREFIX) private String clientPrefix;
 
     @QueryParamIntFill(paramName = "clients-per-realm", defaultValue = DatasetConstants.DEFAULT_CLIENTS_PER_REALM) private Integer clientsPerRealm;
+
+    @QueryParamIntFill(paramName = "clients-per-transaction", defaultValue = DatasetConstants.DEFAULT_USERS_PER_TRANSACTION) Integer clientsPerTransaction;
 
     @QueryParamFill(paramName = "client-role-prefix", defaultValue = DatasetConstants.DEFAULT_CLIENT_ROLE_PREFIX) private String clientRolePrefix;
 
@@ -94,6 +94,10 @@ public class CreateRealmConfig implements Config {
 
     public Integer getClientsPerRealm() {
         return clientsPerRealm;
+    }
+
+    public Integer getClientsPerTransaction() {
+        return clientsPerTransaction;
     }
 
     public String getClientRolePrefix() {
@@ -154,6 +158,7 @@ public class CreateRealmConfig implements Config {
                 .append("\n realm-roles-per-realm = " + realmRolesPerRealm)
                 .append("\n client-prefix = " + clientPrefix)
                 .append("\n clients-per-realm = " + clientsPerRealm)
+                .append("\n clients-per-transaction = " + clientsPerTransaction)
                 .append("\n client-role-prefix = " + clientRolePrefix)
                 .append("\n client-roles-per-client = " + clientRolesPerClient)
                 .append("\n group-prefix = " + groupPrefix)
