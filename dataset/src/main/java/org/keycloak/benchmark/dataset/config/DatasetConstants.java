@@ -27,14 +27,6 @@ public class DatasetConstants {
 
     public static final String DEFAULT_REALM_PREFIX = "realm";
 
-    /**
-     * -1 means that we will try to "auto-guess" where to start based on realms available
-     * TODO: Change to -1
-     */
-    public static final int DEFAULT_REALM_START = 0;
-
-    // public static final Integer DEFAULT_REALM_COUNT = 100;
-
     public static final String DEFAULT_REALM_ROLE_PREFIX = "role-";
 
     public static final int DEFAULT_REALM_ROLES_PER_REALM = 25;
@@ -62,6 +54,10 @@ public class DatasetConstants {
     public static final int DEFAULT_CLIENT_ROLES_PER_USER = 4;
 
     public static final int DEFAULT_GROUPS_PER_USER = 4;
+
+    public static final int DEFAULT_TRANSACTION_TIMEOUT_SEC = 300;
+
+    public static final int DEFAULT_USERS_PER_TRANSACTION = 100;
 
 
 }

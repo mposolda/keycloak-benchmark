@@ -18,9 +18,7 @@
 
 package org.keycloak.benchmark.dataset.config;
 
-import java.lang.reflect.Field;
-
-import org.jboss.resteasy.spi.HttpRequest;
+import javax.ws.rs.QueryParam;
 
 /**
  * @author <a href="mailto:mposolda@redhat.com">Marek Posolda</a>
@@ -61,6 +59,10 @@ public class CreateRealmConfig implements Config {
     @QueryParamIntFill(paramName = "client-roles-per-user", defaultValue = DatasetConstants.DEFAULT_CLIENT_ROLES_PER_USER) private Integer clientRolesPerUser;
 
     @QueryParamIntFill(paramName = "password-hash-iterations", defaultValue = DatasetConstants.DEFAULT_HASH_ITERATIONS) private Integer passwordHashIterations;
+
+    @QueryParamIntFill(paramName = "transaction-timeout", defaultValue = DatasetConstants.DEFAULT_TRANSACTION_TIMEOUT_SEC) Integer transactionTimeoutInSeconds;
+
+    @QueryParamIntFill(paramName = "users-per-transaction", defaultValue = DatasetConstants.DEFAULT_USERS_PER_TRANSACTION) Integer usersPerTransaction;
 
     public String getRealmPrefix() {
         return realmPrefix;
@@ -134,6 +136,14 @@ public class CreateRealmConfig implements Config {
         return passwordHashIterations;
     }
 
+    public Integer getTransactionTimeoutInSeconds() {
+        return transactionTimeoutInSeconds;
+    }
+
+    public Integer getUsersPerTransaction() {
+        return usersPerTransaction;
+    }
+
     @Override
     public String toString() {
         return new StringBuilder("CreateRealm [ ")
@@ -154,6 +164,8 @@ public class CreateRealmConfig implements Config {
                 .append("\n realm-roles-per-user = " + realmRolesPerUser)
                 .append("\n client-roles-per-user = " + clientRolesPerUser)
                 .append("\n password-hash-iterations = " + passwordHashIterations)
+                .append("\n transaction-timeout = " + transactionTimeoutInSeconds + " seconds")
+                .append("\n users-per-transaction = " + usersPerTransaction)
                 .append("\n]")
                 .toString();
     }
