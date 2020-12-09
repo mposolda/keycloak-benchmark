@@ -18,28 +18,11 @@
 
 package org.keycloak.benchmark.dataset.config;
 
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.annotation.Target;
-
-import static org.keycloak.benchmark.dataset.config.DatasetOperation.CREATE_CLIENTS;
-import static org.keycloak.benchmark.dataset.config.DatasetOperation.CREATE_REALMS;
-import static org.keycloak.benchmark.dataset.config.DatasetOperation.CREATE_USERS;
-
 /**
  * @author <a href="mailto:mposolda@redhat.com">Marek Posolda</a>
  */
-@Retention(RetentionPolicy.RUNTIME)
-@Target(ElementType.FIELD)
-public @interface QueryParamFill {
-
-    String paramName();
-
-    String defaultValue() default "";
-
-    boolean required() default false;
-
-    DatasetOperation[] operations();
-
+public enum DatasetOperation {
+    CREATE_REALMS,
+    CREATE_CLIENTS,
+    CREATE_USERS
 }

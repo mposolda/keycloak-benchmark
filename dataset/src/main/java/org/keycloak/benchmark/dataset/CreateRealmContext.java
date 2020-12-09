@@ -19,11 +19,9 @@
 package org.keycloak.benchmark.dataset;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
-import org.keycloak.benchmark.dataset.config.CreateRealmConfig;
+import org.keycloak.benchmark.dataset.config.DatasetConfig;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.GroupModel;
 import org.keycloak.models.RealmModel;
@@ -40,7 +38,7 @@ import org.keycloak.models.UserModel;
  */
 public class CreateRealmContext {
 
-    private final CreateRealmConfig config;
+    private final DatasetConfig config;
 
     private RealmModel realm;
 
@@ -55,11 +53,11 @@ public class CreateRealmContext {
 
     private final List<UserModel> users = new ArrayList<>();
 
-    public CreateRealmContext(CreateRealmConfig config) {
+    public CreateRealmContext(DatasetConfig config) {
         this.config = config;
     }
 
-    public CreateRealmConfig getConfig() {
+    public DatasetConfig getConfig() {
         return config;
     }
 

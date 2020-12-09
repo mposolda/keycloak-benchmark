@@ -42,13 +42,13 @@ public class TimerLogger {
     public void info(Logger logger, String event, Object... params) {
         String log = String.format(event, params);
         long timeMs = Time.currentTimeMillis() - startTimeMs;
-        logger.infof(log + ", Time since '%s': %d ms", startMessage, timeMs);
+        logger.infof(log + ", Time since start of the operation '%s': %d ms", startMessage, timeMs);
     }
 
     public void debug(Logger logger, String event, Object... params) {
         String log = String.format(event, params);
         long timeMs = Time.currentTimeMillis() - startTimeMs;
-        logger.debugf(log + ", Time since '%s': %d ms", startMessage, timeMs);
+        logger.debugf(log + ", Time since of the operation '%s': %d ms", startMessage, timeMs);
     }
 
 

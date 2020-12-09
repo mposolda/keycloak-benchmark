@@ -18,28 +18,28 @@
 
 package org.keycloak.benchmark.dataset.config;
 
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.annotation.Target;
-
-import static org.keycloak.benchmark.dataset.config.DatasetOperation.CREATE_CLIENTS;
-import static org.keycloak.benchmark.dataset.config.DatasetOperation.CREATE_REALMS;
-import static org.keycloak.benchmark.dataset.config.DatasetOperation.CREATE_USERS;
-
 /**
  * @author <a href="mailto:mposolda@redhat.com">Marek Posolda</a>
  */
-@Retention(RetentionPolicy.RUNTIME)
-@Target(ElementType.FIELD)
-public @interface QueryParamFill {
+public class DatasetException extends RuntimeException {
 
-    String paramName();
+    public DatasetException() {
+        super();
+    }
 
-    String defaultValue() default "";
+    public DatasetException(String message) {
+        super(message);
+    }
 
-    boolean required() default false;
+    public DatasetException(String message, Throwable cause) {
+        super(message, cause);
+    }
 
-    DatasetOperation[] operations();
+    public DatasetException(Throwable cause) {
+        super(cause);
+    }
 
+    protected DatasetException(String message, Throwable cause, boolean enableSuppression, boolean writableStackTrace) {
+        super(message, cause, enableSuppression, writableStackTrace);
+    }
 }

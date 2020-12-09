@@ -19,6 +19,7 @@
 package org.keycloak.benchmark.dataset.config;
 
 import java.lang.reflect.Field;
+import java.util.Arrays;
 import java.util.function.Function;
 
 import org.jboss.logging.Logger;
@@ -36,25 +37,24 @@ public class ConfigUtil {
      * Create the config class based on the HTTP query parameters and the defaults.
      *
      * @param httpRequest
-     * @param configClass
-     * @param <T>
+     * @param operation
      * @return
      */
-    public static <T extends Config> T createConfigFromQueryParams(HttpRequest httpRequest, Class<T> configClass) {
-        T config;
-        try {
-            config = configClass.getDeclaredConstructor().newInstance();
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to construct " + configClass.getName(), e);
-        }
+    public static DatasetConfig createConfigFromQueryParams(HttpRequest httpRequest, DatasetOperation operation) {
+        DatasetConfig config = new DatasetConfig();
 
-        for (Field f : configClass.getDeclaredFields()) {
+        StringBuilder toString = new StringBuilder("DatasetConfig [ ");
+
+        for (Field f : DatasetConfig.class.getDeclaredFields()) {
             QueryParamFill qpf = f.getAnnotation(QueryParamFill.class);
             if (qpf != null) {
+                boolean applicable = Arrays.asList(qpf.operations()).contains(operation);
+                if (!applicable) continue;
+
                 String val = httpRequest.getUri().getQueryParameters().getFirst(qpf.paramName());
                 if (val == null) {
                     if (qpf.required()) {
-                        throw new IllegalStateException("Required parameter " + qpf.paramName() + " not present");
+                        throw new DatasetException("Required parameter '" + qpf.paramName() + "' missing");
                     }
                     val = qpf.defaultValue();
                 }
@@ -62,17 +62,21 @@ public class ConfigUtil {
                 try {
                     f.set(config, val);
                 } catch (Exception e) {
-                    throw new RuntimeException("Failed to fill the field " + qpf.paramName());
+                    throw new DatasetException("Failed to fill the field '" + qpf.paramName() + "'", e);
                 }
+                toString.append("\n " + qpf.paramName() + ": " + val);
             }
 
             QueryParamIntFill qpfInt = f.getAnnotation(QueryParamIntFill.class);
             if (qpfInt != null) {
+                boolean applicable = Arrays.asList(qpfInt.operations()).contains(operation);
+                if (!applicable) continue;
+
                 String valStr = httpRequest.getUri().getQueryParameters().getFirst(qpfInt.paramName());
                 Integer val;
                 if (valStr == null) {
                     if (qpfInt.required()) {
-                        throw new IllegalStateException("Required parameter " + qpfInt.paramName() + " not present");
+                        throw new DatasetException("Required parameter '" + qpfInt.paramName() + "' missing");
                     }
                     val = qpfInt.defaultValue();
                 } else {
@@ -82,10 +86,13 @@ public class ConfigUtil {
                 try {
                     f.set(config, val);
                 } catch (Exception e) {
-                    throw new RuntimeException("Failed to fill the field " + qpfInt.paramName());
+                    throw new DatasetException("Failed to fill the field '" + qpfInt.paramName() +"'", e);
                 }
+                toString.append("\n " + qpfInt.paramName() + ": " + val);
             }
         }
+        toString.append("\n]");
+        config.setToString(toString.toString());
 
         return config;
     }

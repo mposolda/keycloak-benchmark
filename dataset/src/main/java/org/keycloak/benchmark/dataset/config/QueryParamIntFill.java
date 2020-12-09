@@ -23,6 +23,10 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
+import static org.keycloak.benchmark.dataset.config.DatasetOperation.CREATE_CLIENTS;
+import static org.keycloak.benchmark.dataset.config.DatasetOperation.CREATE_REALMS;
+import static org.keycloak.benchmark.dataset.config.DatasetOperation.CREATE_USERS;
+
 /**
  * @author <a href="mailto:mposolda@redhat.com">Marek Posolda</a>
  */
@@ -32,8 +36,10 @@ public @interface QueryParamIntFill {
 
     String paramName();
 
-    int defaultValue();
+    int defaultValue() default -1;
 
     boolean required() default false;
+
+    DatasetOperation[] operations();
 
 }
