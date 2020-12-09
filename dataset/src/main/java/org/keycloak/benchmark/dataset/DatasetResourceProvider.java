@@ -23,6 +23,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import javax.ws.rs.GET;
 import javax.ws.rs.Produces;
@@ -125,11 +126,57 @@ public class DatasetResourceProvider implements RealmResourceProvider {
         KeycloakModelUtils.runJobInTransactionWithTimeout(baseSession.getKeycloakSessionFactory(), session -> {
 
             RealmModel realm = session.realms().getRealm(context.getRealm().getId());
-
-            realm.getRoles();
-            realm.getClients();
-            realm.getGroups();
             context.setRealm(realm);
+
+            Set<RoleModel> roles = realm.getRoles();
+            List<RoleModel> sortedRoles = roles.stream()
+                    .filter(roleModel -> roleModel.getName().startsWith(context.getConfig().getRealmRolePrefix()))
+                    .sorted((role1, role2) -> {
+                        String name1 = role1.getName().substring(context.getConfig().getRealmRolePrefix().length());
+                        String name2 = role2.getName().substring(context.getConfig().getRealmRolePrefix().length());
+                        return Integer.parseInt(name1) - Integer.parseInt(name2);
+                    })
+                    .collect(Collectors.toList());
+            context.setRealmRoles(sortedRoles);
+
+            List<GroupModel> groups = realm.getGroups();
+            List<GroupModel> sortedGroups = groups.stream()
+                    .filter(groupModel -> groupModel.getName().startsWith(context.getConfig().getGroupPrefix()))
+                    .sorted((group1, group2) -> {
+                        String name1 = group1.getName().substring(context.getConfig().getGroupPrefix().length());
+                        String name2 = group2.getName().substring(context.getConfig().getGroupPrefix().length());
+                        return Integer.parseInt(name1) - Integer.parseInt(name2);
+                    })
+                    .collect(Collectors.toList());
+            context.setGroups(sortedGroups);
+
+            List<ClientModel> clients = realm.getClients();
+            List<RoleModel> sortedClientRoles = new ArrayList<>();
+            List<ClientModel> sortedClients = clients.stream()
+                    .filter(clientModel -> clientModel.getClientId().startsWith(context.getConfig().getClientPrefix()))
+                    .sorted((client1, client2) -> {
+                        String name1 = client1.getClientId().substring(context.getConfig().getClientPrefix().length());
+                        String name2 = client2.getClientId().substring(context.getConfig().getClientPrefix().length());
+                        return Integer.parseInt(name1) - Integer.parseInt(name2);
+                    })
+                    .peek(client -> {
+                        // Sort client roles and add to the shared list
+                        List<RoleModel> currentClientRoles = client.getRoles().stream()
+                                .filter(roleModel -> roleModel.getName().startsWith(context.getConfig().getClientPrefix()))
+                                .sorted((role1, role2) -> {
+                                    int index1 = role1.getName().indexOf(context.getConfig().getClientRolePrefix()) + context.getConfig().getClientRolePrefix().length();
+                                    int index2 = role2.getName().indexOf(context.getConfig().getClientRolePrefix()) + context.getConfig().getClientRolePrefix().length();
+                                    String name1 = role1.getName().substring(index1);
+                                    String name2 = role2.getName().substring(index2);
+                                    return Integer.parseInt(name1) - Integer.parseInt(name2);
+                                })
+                                .collect(Collectors.toList());
+                        sortedClientRoles.addAll(currentClientRoles);
+
+                    })
+                    .collect(Collectors.toList());
+            context.setClients(sortedClients);
+            context.setClientRoles(sortedClientRoles);
 
         }, config.getTransactionTimeoutInSeconds());
 

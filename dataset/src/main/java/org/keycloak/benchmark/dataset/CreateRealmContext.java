@@ -44,14 +44,14 @@ public class CreateRealmContext {
 
     private RealmModel realm;
 
-    private final List<ClientModel> clients = new ArrayList<>();
+    private List<ClientModel> clients = new ArrayList<>();
 
-    private final List<RoleModel> realmRoles = new ArrayList<>();
+    private List<RoleModel> realmRoles = new ArrayList<>();
 
     // All client roles of all clients
-    private final List<RoleModel> clientRoles = new ArrayList<>();
+    private List<RoleModel> clientRoles = new ArrayList<>();
 
-    private final List<GroupModel> groups = new ArrayList<>();
+    private List<GroupModel> groups = new ArrayList<>();
 
     private final List<UserModel> users = new ArrayList<>();
 
@@ -79,12 +79,20 @@ public class CreateRealmContext {
         return clients;
     }
 
+    public void setClients(List<ClientModel> clients) {
+        this.clients = clients;
+    }
+
     public void realmRoleCreated(RoleModel role) {
         realmRoles.add(role);
     }
 
     public List<RoleModel> getRealmRoles() {
         return realmRoles;
+    }
+
+    public void setRealmRoles(List<RoleModel> realmRoles) {
+        this.realmRoles = realmRoles;
     }
 
     public void clientRoleCreated(ClientModel client, RoleModel clientRole) {
@@ -95,12 +103,20 @@ public class CreateRealmContext {
         return clientRoles;
     }
 
+    public void setClientRoles(List<RoleModel> clientRoles) {
+        this.clientRoles = clientRoles;
+    }
+
     public void groupCreated(GroupModel group) {
         groups.add(group);
     }
 
     public List<GroupModel> getGroups() {
         return groups;
+    }
+
+    public void setGroups(List<GroupModel> groups) {
+        this.groups = groups;
     }
 
     public void userCreated(UserModel user) {
