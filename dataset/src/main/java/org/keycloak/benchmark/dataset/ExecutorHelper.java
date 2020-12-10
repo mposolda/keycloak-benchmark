@@ -25,6 +25,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
+import org.keycloak.benchmark.dataset.config.DatasetConfig;
 import org.keycloak.models.KeycloakSessionFactory;
 import org.keycloak.models.KeycloakSessionTask;
 import org.keycloak.models.utils.KeycloakModelUtils;
@@ -36,20 +37,20 @@ public class ExecutorHelper {
 
     private final ExecutorService executor;
     private final KeycloakSessionFactory sessionFactory;
-    private final RealmContext context;
+    private final DatasetConfig config;
     private final Queue<Future> futures = new LinkedList<>();
 
-    public ExecutorHelper(int threadCount, KeycloakSessionFactory sessionFactory, RealmContext context) {
+    public ExecutorHelper(int threadCount, KeycloakSessionFactory sessionFactory, DatasetConfig config) {
         executor = Executors.newFixedThreadPool(threadCount);
         this.sessionFactory = sessionFactory;
-        this.context = context;
+        this.config = config;
     }
 
 
     public void addTask(KeycloakSessionTask sessionTask) {
         Future f = executor.submit(() -> {
 
-            KeycloakModelUtils.runJobInTransactionWithTimeout(sessionFactory, sessionTask, context.getConfig().getTransactionTimeoutInSeconds());
+            KeycloakModelUtils.runJobInTransactionWithTimeout(sessionFactory, sessionTask, config.getTransactionTimeoutInSeconds());
 
         });
         futures.add(f);
