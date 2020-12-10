@@ -18,6 +18,8 @@
 
 package org.keycloak.benchmark.dataset;
 
+import java.util.Date;
+
 import org.jboss.logging.Logger;
 import org.keycloak.common.util.Time;
 
@@ -26,11 +28,11 @@ import org.keycloak.common.util.Time;
  */
 public class TimerLogger {
 
-    private final String startMessage;
+    private final String taskMessage;
     private final long startTimeMs;
 
-    private TimerLogger(String startMessage, long startTimeMs) {
-        this.startMessage = startMessage;
+    private TimerLogger(String taskMessage, long startTimeMs) {
+        this.taskMessage = taskMessage;
         this.startTimeMs = startTimeMs;
     }
 
@@ -42,13 +44,22 @@ public class TimerLogger {
     public void info(Logger logger, String event, Object... params) {
         String log = String.format(event, params);
         long timeMs = Time.currentTimeMillis() - startTimeMs;
-        logger.infof(log + ", Time since start of the operation '%s': %d ms", startMessage, timeMs);
+        logger.infof(log + ", Time since start of the task '%s': %d ms", taskMessage, timeMs);
     }
 
     public void debug(Logger logger, String event, Object... params) {
         String log = String.format(event, params);
         long timeMs = Time.currentTimeMillis() - startTimeMs;
-        logger.debugf(log + ", Time since of the operation '%s': %d ms", startMessage, timeMs);
+        logger.debugf(log + ", Time since of the operation '%s': %d ms", taskMessage, timeMs);
+    }
+
+    public String getTaskMessage() {
+        return taskMessage;
+    }
+
+    @Override
+    public String toString() {
+        return String.format("Task: %s, started: %s", taskMessage, new Date(startTimeMs).toString());
     }
 
 

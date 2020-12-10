@@ -109,6 +109,10 @@ public class DatasetConfig implements Config {
     @QueryParamIntFill(paramName = "threads-count", defaultValue = 5, operations = { CREATE_REALMS, CREATE_CLIENTS, CREATE_USERS })
     private Integer threadsCount;
 
+    // Timeout for the task
+    @QueryParamIntFill(paramName = "threads-count", defaultValue = 1800, operations = { CREATE_REALMS, CREATE_CLIENTS, CREATE_USERS })
+    private Integer taskTimeout;
+
     // String representation of this configuration (cached here to not be computed in runtime)
     private String toString = "DatasetConfig []";
 
@@ -202,6 +206,10 @@ public class DatasetConfig implements Config {
 
     public Integer getThreadsCount() {
         return threadsCount;
+    }
+
+    public Integer getTaskTimeout() {
+        return taskTimeout;
     }
 
     public void setToString(String toString) {
