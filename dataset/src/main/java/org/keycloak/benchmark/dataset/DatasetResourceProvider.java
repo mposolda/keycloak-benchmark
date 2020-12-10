@@ -95,9 +95,20 @@ public class DatasetResourceProvider implements RealmResourceProvider {
     @NoCache
     @Produces(MediaType.APPLICATION_JSON)
     public Response createRealms() {
-        ExecutorHelper executor = null;
+        boolean started = false;
+        boolean taskAdded = false;
         try {
             DatasetConfig config = ConfigUtil.createConfigFromQueryParams(httpRequest, CREATE_REALMS);
+
+            TimerLogger timerLogger = TimerLogger.start("Creation of " + config.getCount() + " realms");
+            TaskManager taskManager = new TaskManager(baseSession);
+            String existingTask = taskManager.addTaskIfNotInProgress(timerLogger, config.getTaskTimeout());
+            if (existingTask != null) {
+                return Response.status(400).entity(TaskResponse.errorSomeTaskInProgress(existingTask, getStatusUrl())).build();
+            } else {
+                taskAdded = true;
+            }
+
             logger.infof("Trigger creating realms with the configuration: %s", config);
 
             int startIndex = ConfigUtil.findFreeEntityIndex(index -> {
@@ -105,87 +116,110 @@ public class DatasetResourceProvider implements RealmResourceProvider {
                 return baseSession.getProvider(RealmProvider.class).getRealmByName(realmName) != null;
             });
             config.setStart(startIndex);
-            int realmEndIndex = startIndex + config.getCount();
-            logger.infof("Will start creating realms from '%s' to '%s'", config.getRealmPrefix() + startIndex, config.getRealmPrefix() + (realmEndIndex - 1));
 
-            TimerLogger timerLogger = TimerLogger.start("Creation of realm " + config.getRealmPrefix() + startIndex);
-            executor = new ExecutorHelper(config.getThreadsCount(), baseSession.getKeycloakSessionFactory(), config);
+            // Run this in separate thread to not block HTTP request
+            new Thread(() -> {
 
-            for (int realmIndex = startIndex ; realmIndex < realmEndIndex ; realmIndex++) {
+                createRealmsImpl(timerLogger, baseSession.getKeycloakSessionFactory(), config);
 
-                final int currentRealmIndex = realmIndex;
+            }).start();
+            started = true;
 
-                executor.addTask(executorSession -> {
-                    logger.infof("Started creation of realm %d", currentRealmIndex);
-
-                    RealmContext context = new RealmContext(config);
-
-                    // Step 1 - create realm, realmRoles and groups
-                    KeycloakModelUtils.runJobInTransactionWithTimeout(baseSession.getKeycloakSessionFactory(), session -> {
-                        createAndSetRealm(context, currentRealmIndex, session);
-                        timerLogger.debug(logger, "Created realm %s", context.getRealm().getName());
-
-                        createRealmRoles(context);
-                        timerLogger.debug(logger, "Created %d roles in realm %s", context.getRealmRoles().size(), context.getRealm().getName());
-
-                        createGroups(context);
-                        timerLogger.debug(logger, "Created %d groups in realm %s", context.getGroups().size(), context.getRealm().getName());
-                        timerLogger.info(logger, "Created realm, realm roles and groups in realm %s", context.getRealm().getName());
-
-                    }, config.getTransactionTimeoutInSeconds());
-
-                    // Step 2 - create clients (Using single executor for now... For multiple executors run separate create-clients endpoint)
-                    for (int i = 0; i < config.getClientsPerRealm(); i += config.getClientsPerTransaction()) {
-                        int clientsStartIndex = i;
-                        int endIndex = Math.min(clientsStartIndex + config.getClientsPerTransaction(), config.getClientsPerRealm());
-                        logger.tracef("clientsStartIndex: %d, clientsEndIndex: %d", clientsStartIndex, endIndex);
-
-                        KeycloakModelUtils.runJobInTransactionWithTimeout(baseSession.getKeycloakSessionFactory(), session -> {
-
-                            createClients(context, timerLogger, session, clientsStartIndex, endIndex);
-
-                        }, config.getTransactionTimeoutInSeconds());
-
-                        timerLogger.debug(logger, "Created %d clients in realm %s", context.getClients().size(), context.getRealm().getName());
-                    }
-                    timerLogger.info(logger, "Created all %d clients in realm %s", context.getClients().size(), context.getRealm().getName());
-
-                    // Step 3 - cache realm. This will cache the realm in Keycloak cache (looks like best regarding performance to do it in separate transaction)
-                    cacheRealmAndPopulateContext(context);
-
-                    // Step 4 - create users
-                    for (int i = 0; i < config.getUsersPerRealm(); i += config.getUsersPerTransaction()) {
-                        int usersStartIndex = i;
-                        int endIndex = Math.min(usersStartIndex + config.getUsersPerTransaction(), config.getUsersPerRealm());
-                        logger.tracef("usersStartIndex: %d, usersEndIndex: %d", usersStartIndex, endIndex);
-
-                        KeycloakModelUtils.runJobInTransactionWithTimeout(baseSession.getKeycloakSessionFactory(), session -> {
-
-                            createUsers(context, timerLogger, session, usersStartIndex, endIndex);
-
-                        }, config.getTransactionTimeoutInSeconds());
-
-                        timerLogger.debug(logger, "Created %d users in realm %s", context.getUsers().size(), context.getRealm().getName());
-                    }
-
-                    timerLogger.info(logger, "Created all %d users in realm %s. Finished creation of realm.", context.getUsers().size(), context.getRealm().getName());
-                });
-
-            }
-
-            executor.waitForAllToFinish();
-
-            timerLogger.info(logger, "Created all realms from '%s' to '%s'", config.getRealmPrefix() + startIndex, config.getRealmPrefix() + (realmEndIndex - 1));
-
-            // TODO: More details in the response?
-            return Response.ok("{ \"status\": \"OK\" }").build();
+            return Response.ok(TaskResponse.taskStarted(timerLogger.toString(), getStatusUrl())).build();
         } catch (DatasetException de) {
             return handleDatasetException(de);
         } finally {
-            if (executor != null) {
-                executor.shutDown();
+            if (taskAdded && !started) {
+                new TaskManager(baseSession).removeExistingTask(false);
             }
         }
+    }
+
+    private void createRealmsImpl(TimerLogger timerLogger, KeycloakSessionFactory sessionFactory, DatasetConfig config) {
+        KeycloakModelUtils.runJobInTransactionWithTimeout(sessionFactory, (sessionn -> {
+            ExecutorHelper executor = null;
+            try {
+                int startIndex = config.getStart();
+
+                int realmEndIndex = startIndex + config.getCount();
+                logger.infof("Will start creating realms from '%s' to '%s'", config.getRealmPrefix() + startIndex, config.getRealmPrefix() + (realmEndIndex - 1));
+
+                executor = new ExecutorHelper(config.getThreadsCount(), baseSession.getKeycloakSessionFactory(), config);
+
+                for (int realmIndex = startIndex ; realmIndex < realmEndIndex ; realmIndex++) {
+
+                    final int currentRealmIndex = realmIndex;
+
+                    // Run this concurrently with multiple threads
+                    executor.addTask(executorSession -> {
+                        logger.infof("Started creation of realm %", config.getRealmPrefix() + currentRealmIndex);
+
+                        RealmContext context = new RealmContext(config);
+
+                        // Step 1 - create realm, realmRoles and groups
+                        KeycloakModelUtils.runJobInTransactionWithTimeout(baseSession.getKeycloakSessionFactory(), session -> {
+                            createAndSetRealm(context, currentRealmIndex, session);
+                            timerLogger.debug(logger, "Created realm %s", context.getRealm().getName());
+
+                            createRealmRoles(context);
+                            timerLogger.debug(logger, "Created %d roles in realm %s", context.getRealmRoles().size(), context.getRealm().getName());
+
+                            createGroups(context);
+                            timerLogger.debug(logger, "Created %d groups in realm %s", context.getGroups().size(), context.getRealm().getName());
+                            timerLogger.info(logger, "Created realm, realm roles and groups in realm %s", context.getRealm().getName());
+
+                        }, config.getTransactionTimeoutInSeconds());
+
+                        // Step 2 - create clients (Using single executor for now... For multiple executors run separate create-clients endpoint)
+                        for (int i = 0; i < config.getClientsPerRealm(); i += config.getClientsPerTransaction()) {
+                            int clientsStartIndex = i;
+                            int endIndex = Math.min(clientsStartIndex + config.getClientsPerTransaction(), config.getClientsPerRealm());
+                            logger.tracef("clientsStartIndex: %d, clientsEndIndex: %d", clientsStartIndex, endIndex);
+
+                            KeycloakModelUtils.runJobInTransactionWithTimeout(baseSession.getKeycloakSessionFactory(), session -> {
+
+                                createClients(context, timerLogger, session, clientsStartIndex, endIndex);
+
+                            }, config.getTransactionTimeoutInSeconds());
+
+                            timerLogger.debug(logger, "Created %d clients in realm %s", context.getClients().size(), context.getRealm().getName());
+                        }
+                        timerLogger.info(logger, "Created all %d clients in realm %s", context.getClients().size(), context.getRealm().getName());
+
+                        // Step 3 - cache realm. This will cache the realm in Keycloak cache (looks like best regarding performance to do it in separate transaction)
+                        cacheRealmAndPopulateContext(context);
+
+                        // Step 4 - create users
+                        for (int i = 0; i < config.getUsersPerRealm(); i += config.getUsersPerTransaction()) {
+                            int usersStartIndex = i;
+                            int endIndex = Math.min(usersStartIndex + config.getUsersPerTransaction(), config.getUsersPerRealm());
+                            logger.tracef("usersStartIndex: %d, usersEndIndex: %d", usersStartIndex, endIndex);
+
+                            KeycloakModelUtils.runJobInTransactionWithTimeout(baseSession.getKeycloakSessionFactory(), session -> {
+
+                                createUsers(context, timerLogger, session, usersStartIndex, endIndex);
+
+                            }, config.getTransactionTimeoutInSeconds());
+
+                            timerLogger.debug(logger, "Created %d users in realm %s", context.getUsers().size(), context.getRealm().getName());
+                        }
+
+                        timerLogger.info(logger, "Created all %d users in realm %s. Finished creation of realm.", context.getUsers().size(), context.getRealm().getName());
+                    });
+
+                }
+
+                executor.waitForAllToFinish();
+
+                timerLogger.info(logger, "Created all realms from '%s' to '%s'", config.getRealmPrefix() + startIndex, config.getRealmPrefix() + (realmEndIndex - 1));
+
+            } finally {
+                if (executor != null) {
+                    executor.shutDown();
+                }
+                new TaskManager(sessionn).removeExistingTask(true);
+            }
+        }), config.getTaskTimeout());
     }
 
     private Response handleDatasetException(DatasetException de) {
@@ -207,7 +241,7 @@ public class DatasetResourceProvider implements RealmResourceProvider {
         try {
             DatasetConfig config = ConfigUtil.createConfigFromQueryParams(httpRequest, CREATE_CLIENTS);
 
-            TimerLogger timerLogger = TimerLogger.start("Creation of clients in the realm " + config.getRealmName());
+            TimerLogger timerLogger = TimerLogger.start("Creation of " + config.getCount() + " clients in the realm " + config.getRealmName());
             TaskManager taskManager = new TaskManager(baseSession);
             String existingTask = taskManager.addTaskIfNotInProgress(timerLogger, config.getTaskTimeout());
             if (existingTask != null) {
@@ -267,6 +301,7 @@ public class DatasetResourceProvider implements RealmResourceProvider {
 
                     logger.tracef("clientsStartIndex: %d, clientsEndIndex: %d", clientsStartIndex, endIndex);
 
+                    // Run this concurrently with multiple threads
                     executor.addTask(session -> {
 
                         createClients(context, timerLogger, session, clientsStartIndex, endIndex);
@@ -304,7 +339,7 @@ public class DatasetResourceProvider implements RealmResourceProvider {
         try {
             DatasetConfig config = ConfigUtil.createConfigFromQueryParams(httpRequest, CREATE_USERS);
 
-            TimerLogger timerLogger = TimerLogger.start("Creation of users in the realm " + config.getRealmName());
+            TimerLogger timerLogger = TimerLogger.start("Creation of " + config.getCount() + " users in the realm " + config.getRealmName());
             TaskManager taskManager = new TaskManager(baseSession);
             String existingTask = taskManager.addTaskIfNotInProgress(timerLogger, config.getTaskTimeout());
             if (existingTask != null) {
@@ -371,6 +406,7 @@ public class DatasetResourceProvider implements RealmResourceProvider {
 
                     logger.tracef("usersStartIndex: %d, usersEndIndex: %d", usersStartIndex, endIndex);
 
+                    // Run this concurrently with multiple threads
                     executor.addTask(session -> {
 
                         createUsers(context, timerLogger, session, usersStartIndex, endIndex);

@@ -59,7 +59,7 @@ public class TimerLogger {
 
     @Override
     public String toString() {
-        return String.format("Task: %s, started: %s", taskMessage, new Date(startTimeMs).toString());
+        return String.format("%s, started: %s", taskMessage, new Date(startTimeMs).toString());
     }
 
 

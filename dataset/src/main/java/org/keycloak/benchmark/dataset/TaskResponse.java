@@ -52,11 +52,11 @@ public class TaskResponse {
     }
 
     public static TaskResponse errorSomeTaskInProgress(String taskInProgress, String taskStatusUrl) {
-        return new TaskResponse("Task not triggered. There is already some task in progress. See existing task-id and task-status-url for details", null, taskInProgress, taskStatusUrl);
+        return new TaskResponse("Task not triggered. There is already existing task in progress. See task-id for details about existing task", null, taskInProgress, taskStatusUrl);
     }
 
     public static TaskResponse taskStarted(String taskMessage, String taskStatusUrl) {
-        return new TaskResponse(null, "Task started successfully. See task-status-url and server.log for details", taskMessage, taskStatusUrl);
+        return new TaskResponse(null, "Task started successfully", taskMessage, taskStatusUrl);
     }
 
     public static TaskResponse existingTaskStatus(String taskMessage) {
@@ -64,7 +64,7 @@ public class TaskResponse {
             throw new IllegalStateException("Illegal to call with null argument");
         }
 
-        return new TaskResponse(null, "Task in progress. See task-id for details", taskMessage, null);
+        return new TaskResponse(null, "Task in progress", taskMessage, null);
     }
 
     public static TaskResponse noTaskInProgress() {

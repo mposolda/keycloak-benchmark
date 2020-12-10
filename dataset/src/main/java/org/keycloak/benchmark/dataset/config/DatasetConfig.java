@@ -110,7 +110,7 @@ public class DatasetConfig implements Config {
     private Integer threadsCount;
 
     // Timeout for the task
-    @QueryParamIntFill(paramName = "threads-count", defaultValue = 1800, operations = { CREATE_REALMS, CREATE_CLIENTS, CREATE_USERS })
+    @QueryParamIntFill(paramName = "task-timeout", defaultValue = 1800, operations = { CREATE_REALMS, CREATE_CLIENTS, CREATE_USERS })
     private Integer taskTimeout;
 
     // String representation of this configuration (cached here to not be computed in runtime)
