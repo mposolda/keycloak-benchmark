@@ -58,7 +58,7 @@ public class DatasetConfig implements Config {
     private Integer clientsPerRealm;
 
     // Count of clients created in every DB transaction
-    @QueryParamIntFill(paramName = "clients-per-transaction", defaultValue = DatasetConstants.DEFAULT_USERS_PER_TRANSACTION, operations = { CREATE_REALMS, CREATE_CLIENTS })
+    @QueryParamIntFill(paramName = "clients-per-transaction", defaultValue = 10, operations = { CREATE_REALMS, CREATE_CLIENTS })
     private Integer clientsPerTransaction;
 
     // Prefix of clientRoles to be created (in case of CREATE_REALMS and CREATE_CLIENTS). In case of CREATE_USERS it is used to find the clientRoles, which will be assigned to users

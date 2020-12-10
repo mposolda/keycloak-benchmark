@@ -37,7 +37,7 @@ import org.keycloak.models.UserModel;
  *
  * @author <a href="mailto:mposolda@redhat.com">Marek Posolda</a>
  */
-public class CreateRealmContext {
+public class RealmContext {
 
     private final DatasetConfig config;
 
@@ -54,7 +54,7 @@ public class CreateRealmContext {
 
     private final List<UserModel> users = Collections.synchronizedList(new ArrayList<>());
 
-    public CreateRealmContext(DatasetConfig config) {
+    public RealmContext(DatasetConfig config) {
         this.config = config;
     }
 

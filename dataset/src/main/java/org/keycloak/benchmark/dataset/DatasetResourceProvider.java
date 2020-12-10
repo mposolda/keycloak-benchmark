@@ -46,6 +46,7 @@ import org.keycloak.models.RealmProvider;
 import org.keycloak.models.RoleModel;
 import org.keycloak.models.UserCredentialModel;
 import org.keycloak.models.UserModel;
+import org.keycloak.models.UserProvider;
 import org.keycloak.models.cache.CacheRealmProvider;
 import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
@@ -57,6 +58,7 @@ import org.keycloak.services.resource.RealmResourceProvider;
 
 import static org.keycloak.benchmark.dataset.config.DatasetOperation.CREATE_CLIENTS;
 import static org.keycloak.benchmark.dataset.config.DatasetOperation.CREATE_REALMS;
+import static org.keycloak.benchmark.dataset.config.DatasetOperation.CREATE_USERS;
 
 /**
  * @author <a href="mailto:mposolda@redhat.com">Marek Posolda</a>
@@ -100,7 +102,7 @@ public class DatasetResourceProvider implements RealmResourceProvider {
 
             TimerLogger timerLogger = TimerLogger.start("Creation of realm " + config.getRealmPrefix() + startIndex);
 
-            CreateRealmContext context = new CreateRealmContext(config);
+            RealmContext context = new RealmContext(config);
 
             // Step 1 - create realm, realmRoles and groups
             KeycloakModelUtils.runJobInTransactionWithTimeout(baseSession.getKeycloakSessionFactory(), session -> {
@@ -194,24 +196,27 @@ public class DatasetResourceProvider implements RealmResourceProvider {
 
             TimerLogger timerLogger = TimerLogger.start("Creation of clients in the realm " + config.getRealmName());
 
-            CreateRealmContext context = new CreateRealmContext(config);
+            RealmContext context = new RealmContext(config);
             context.setRealm(realm);
             executor = new ExecutorHelper(config.getThreadsCount(), baseSession.getKeycloakSessionFactory(), context);
 
-            // Step 2 - create clients (Using single executor for now... For multiple executors run separate create-clients endpoint)
+            // Create clients now
             for (int i = startIndex; i < (startIndex + config.getCount()); i += config.getClientsPerTransaction()) {
                 final int clientsStartIndex = i;
                 final int endIndex = Math.min(clientsStartIndex + config.getClientsPerTransaction(), startIndex + config.getCount());
+                // TODO:mposolda trace
                 logger.infof("clientsStartIndex: %d, clientsEndIndex: %d", clientsStartIndex, endIndex);
 
                 executor.addTask(session -> {
 
-                    // TODO:mposolda debug
-                    timerLogger.info(logger, "Will create clients in realm %s from %d to %d", context.getRealm().getName(), clientsStartIndex, endIndex);
-
                     createClients(context, timerLogger, session, clientsStartIndex, endIndex);
-                    // TODO:mposolda debug
+
+                    // TODO:mposolda
                     timerLogger.info(logger, "Created clients in realm %s from %d to %d", context.getRealm().getName(), clientsStartIndex, endIndex);
+
+                    if (((endIndex - startIndex) / config.getClientsPerTransaction()) % 20 == 0) {
+                        timerLogger.info(logger, "Created %d clients in realm %s", context.getClients().size(), context.getRealm().getName());
+                    }
 
                 });
 
@@ -232,12 +237,84 @@ public class DatasetResourceProvider implements RealmResourceProvider {
         }
     }
 
+
+    @GET
+    @Path("/create-users")
+    @NoCache
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response createUsers() {
+        ExecutorHelper executor = null;
+        try {
+            DatasetConfig config = ConfigUtil.createConfigFromQueryParams(httpRequest, CREATE_USERS);
+            logger.infof("Trigger creating users with the configuration: %s", config);
+
+            // Use the cache
+            RealmModel realm = baseSession.realms().getRealmByName(config.getRealmName());
+            if (realm == null) {
+                throw new DatasetException("Realm '" + config.getRealmName() + "' not found");
+            }
+
+            int startIndex = ConfigUtil.findFreeEntityIndex(index -> {
+                String username = config.getUserPrefix() + index;
+                return baseSession.users().getUserByUsername(username, realm) != null;
+            });
+            config.setStart(startIndex);
+            logger.infof("Will start creating users in the realm '%s' from '%s' to '%s'", config.getRealmName(), config.getUserPrefix() + startIndex, config.getUserPrefix() + (startIndex + config.getCount()));
+
+
+            TimerLogger timerLogger = TimerLogger.start("Creation of users in the realm " + config.getRealmName() + ". Realm password policy: " + realm.getPasswordPolicy().toString());
+
+            RealmContext context = new RealmContext(config);
+            context.setRealm(realm);
+
+            // Cache the realm (It is probably good due the defaultRoles and defaultGroups when creating users, which would otherwise need to be lookup from DB)
+            cacheRealmAndPopulateContext(context);
+            timerLogger.info(logger, "Cached realm %s", context.getRealm().getName());
+
+            executor = new ExecutorHelper(config.getThreadsCount(), baseSession.getKeycloakSessionFactory(), context);
+
+            // Create users now
+            for (int i = startIndex; i < (startIndex + config.getCount()); i += config.getUsersPerTransaction()) {
+                final int usersStartIndex = i;
+                final int endIndex = Math.min(usersStartIndex + config.getUsersPerTransaction(), startIndex + config.getCount());
+                // TODO:mposolda trace
+                logger.infof("usersStartIndex: %d, usersEndIndex: %d", usersStartIndex, endIndex);
+
+                executor.addTask(session -> {
+
+                    createUsers(context, timerLogger, session, usersStartIndex, endIndex);
+                    // TODO:mposolda
+                    timerLogger.info(logger, "Created users in realm %s from %d to %d", context.getRealm().getName(), usersStartIndex, endIndex);
+
+                    if (((endIndex - startIndex) / config.getUsersPerTransaction()) % 20 == 0) {
+                        timerLogger.info(logger, "Created %d users in realm %s", context.getUsers().size(), context.getRealm().getName());
+                    }
+
+                });
+
+            }
+
+            executor.waitForAllToFinish();
+
+            timerLogger.info(logger, "Created all %d users in realm %s", context.getUsers().size(), context.getRealm().getName());
+
+            // TODO: More details in the response?
+            return Response.ok("{ \"status\": \"OK\" }").build();
+        } catch (DatasetException de) {
+            return handleDatasetException(de);
+        } finally {
+            if (executor != null) {
+                executor.shutDown();
+            }
+        }
+    }
+
     @Override
     public void close() {
     }
 
 
-    private void createAndSetRealm(CreateRealmContext context, int index, KeycloakSession session) {
+    private void createAndSetRealm(RealmContext context, int index, KeycloakSession session) {
         DatasetConfig config = context.getConfig();
 
         RealmManager realmManager = new RealmManager(session);
@@ -257,7 +334,7 @@ public class DatasetResourceProvider implements RealmResourceProvider {
         context.setRealm(realm);
     }
 
-    private void createRealmRoles(CreateRealmContext context) {
+    private void createRealmRoles(RealmContext context) {
         RealmModel realm = context.getRealm();
 
         for (int i = 0; i < context.getConfig().getRealmRolesPerRealm(); i++) {
@@ -267,7 +344,7 @@ public class DatasetResourceProvider implements RealmResourceProvider {
         }
     }
 
-    private void createClients(CreateRealmContext context, TimerLogger timerLogger, KeycloakSession session, final int startIndex, final int endIndex) {
+    private void createClients(RealmContext context, TimerLogger timerLogger, KeycloakSession session, final int startIndex, final int endIndex) {
         RealmModel realm = context.getRealm();
 
         // Eagerly register invalidation to make sure we don't cache the realm in this transaction. Caching will result in bunch of
@@ -309,7 +386,7 @@ public class DatasetResourceProvider implements RealmResourceProvider {
         timerLogger.debug(logger, "Created %d clients in realm %s", context.getClients().size(), context.getRealm().getName());
     }
 
-    private void createGroups(CreateRealmContext context) {
+    private void createGroups(RealmContext context) {
         RealmModel realm = context.getRealm();
 
         for (int i = 0; i < context.getConfig().getGroupsPerRealm(); i++) {
@@ -319,7 +396,7 @@ public class DatasetResourceProvider implements RealmResourceProvider {
         }
     }
 
-    private void createUsers(CreateRealmContext context, TimerLogger timerLogger, KeycloakSession session, int startIndex, int endIndex) {
+    private void createUsers(RealmContext context, TimerLogger timerLogger, KeycloakSession session, int startIndex, int endIndex) {
         // Refresh the realm
         RealmModel realm = session.realms().getRealm(context.getRealm().getId());
         DatasetConfig config = context.getConfig();
@@ -338,9 +415,10 @@ public class DatasetResourceProvider implements RealmResourceProvider {
             // Detect which roles we assign to the user
             int roleIndexStartForCurrentUser = (i * config.getRealmRolesPerUser());
             for (int j = roleIndexStartForCurrentUser ; j < roleIndexStartForCurrentUser + config.getRealmRolesPerUser() ; j++) {
-                int roleIndex = j % config.getRealmRolesPerRealm();
+                int roleIndex = j % context.getRealmRoles().size();
                 user.grantRole(context.getRealmRoles().get(roleIndex));
-                logger.tracef("Assigned role %s to the user %s", context.getRealmRoles().get(roleIndex).getName(), user.getUsername());
+                // TODO:mposolda trace
+                logger.infof("Assigned role %s to the user %s", context.getRealmRoles().get(roleIndex).getName(), user.getUsername());
             }
 
             int clientRolesTotal = context.getClientRoles().size();
@@ -348,15 +426,17 @@ public class DatasetResourceProvider implements RealmResourceProvider {
             for (int j = clientRoleIndexStartForCurrentUser ; j < clientRoleIndexStartForCurrentUser + config.getClientRolesPerUser() ; j++) {
                 int roleIndex = j % clientRolesTotal;
                 user.grantRole(context.getClientRoles().get(roleIndex));
-                logger.tracef("Assigned role %s to the user %s", context.getClientRoles().get(roleIndex).getName(), user.getUsername());
+                // TODO:mposolda trace
+                logger.infof("Assigned role %s to the user %s", context.getClientRoles().get(roleIndex).getName(), user.getUsername());
             }
 
             // Detect which groups we assign to the user
             int groupIndexStartForCurrentUser = (i * config.getGroupsPerUser());
             for (int j = groupIndexStartForCurrentUser ; j < groupIndexStartForCurrentUser + config.getGroupsPerUser() ; j++) {
-                int groupIndex = j % config.getGroupsPerRealm();
+                int groupIndex = j % context.getGroups().size();
                 user.joinGroup(context.getGroups().get(groupIndex));
-                logger.tracef("Assigned group %s to the user %s", context.getGroups().get(groupIndex).getName(), user.getUsername());
+                // TODO:mposolda trace
+                logger.infof("Assigned group %s to the user %s", context.getGroups().get(groupIndex).getName(), user.getUsername());
             }
 
             context.userCreated(user);
@@ -364,7 +444,7 @@ public class DatasetResourceProvider implements RealmResourceProvider {
     }
 
 
-    private void cacheRealmAndPopulateContext(CreateRealmContext context) {
+    private void cacheRealmAndPopulateContext(RealmContext context) {
         DatasetConfig config = context.getConfig();
 
         KeycloakModelUtils.runJobInTransactionWithTimeout(baseSession.getKeycloakSessionFactory(), session -> {

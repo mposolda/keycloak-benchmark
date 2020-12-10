@@ -36,10 +36,10 @@ public class ExecutorHelper {
 
     private final ExecutorService executor;
     private final KeycloakSessionFactory sessionFactory;
-    private final CreateRealmContext context;
+    private final RealmContext context;
     private final Queue<Future> futures = new LinkedList<>();
 
-    public ExecutorHelper(int threadCount, KeycloakSessionFactory sessionFactory, CreateRealmContext context) {
+    public ExecutorHelper(int threadCount, KeycloakSessionFactory sessionFactory, RealmContext context) {
         executor = Executors.newFixedThreadPool(threadCount);
         this.sessionFactory = sessionFactory;
         this.context = context;
