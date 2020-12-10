@@ -93,7 +93,7 @@ public class DatasetResourceProvider implements RealmResourceProvider {
 
             int startIndex = ConfigUtil.findFreeEntityIndex(index -> {
                 String realmName = config.getRealmPrefix() + index;
-                return baseSession.realms().getRealmByName(realmName) != null;
+                return baseSession.getProvider(RealmProvider.class).getRealmByName(realmName) != null;
             });
             config.setStart(startIndex);
             logger.infof("Will start creating realms from '%s' to '%s'", config.getRealmPrefix() + startIndex, config.getRealmPrefix() + (startIndex + config.getCount()));
@@ -173,11 +173,13 @@ public class DatasetResourceProvider implements RealmResourceProvider {
     @NoCache
     @Produces(MediaType.APPLICATION_JSON)
     public Response createClients() {
+        ExecutorHelper executor = null;
         try {
             DatasetConfig config = ConfigUtil.createConfigFromQueryParams(httpRequest, CREATE_CLIENTS);
             logger.infof("Trigger creating clients with the configuration: %s", config);
 
-            RealmModel realm = baseSession.realms().getRealmByName(config.getRealmName());
+            // Avoid cache (Realm will be invalidated from the cache anyway)
+            RealmModel realm = baseSession.getProvider(RealmProvider.class).getRealmByName(config.getRealmName());
             if (realm == null) {
                 throw new DatasetException("Realm '" + config.getRealmName() + "' not found");
             }
@@ -191,12 +193,42 @@ public class DatasetResourceProvider implements RealmResourceProvider {
 
 
             TimerLogger timerLogger = TimerLogger.start("Creation of clients in the realm " + config.getRealmName());
-            // CreateRealmContext context = new CreateRealmContext(config);
+
+            CreateRealmContext context = new CreateRealmContext(config);
+            context.setRealm(realm);
+            executor = new ExecutorHelper(config.getThreadsCount(), baseSession.getKeycloakSessionFactory(), context);
+
+            // Step 2 - create clients (Using single executor for now... For multiple executors run separate create-clients endpoint)
+            for (int i = startIndex; i < (startIndex + config.getCount()); i += config.getClientsPerTransaction()) {
+                final int clientsStartIndex = i;
+                final int endIndex = Math.min(clientsStartIndex + config.getClientsPerTransaction(), startIndex + config.getCount());
+                logger.infof("clientsStartIndex: %d, clientsEndIndex: %d", clientsStartIndex, endIndex);
+
+                executor.addTask(session -> {
+
+                    // TODO:mposolda debug
+                    timerLogger.info(logger, "Will create clients in realm %s from %d to %d", context.getRealm().getName(), clientsStartIndex, endIndex);
+
+                    createClients(context, timerLogger, session, clientsStartIndex, endIndex);
+                    // TODO:mposolda debug
+                    timerLogger.info(logger, "Created clients in realm %s from %d to %d", context.getRealm().getName(), clientsStartIndex, endIndex);
+
+                });
+
+            }
+
+            executor.waitForAllToFinish();
+
+            timerLogger.info(logger, "Created all %d clients in realm %s", context.getClients().size(), context.getRealm().getName());
 
             // TODO: More details in the response?
             return Response.ok("{ \"status\": \"OK\" }").build();
         } catch (DatasetException de) {
             return handleDatasetException(de);
+        } finally {
+            if (executor != null) {
+                executor.shutDown();
+            }
         }
     }
 
@@ -235,7 +267,7 @@ public class DatasetResourceProvider implements RealmResourceProvider {
         }
     }
 
-    private void createClients(CreateRealmContext context, TimerLogger timerLogger, KeycloakSession session, int startIndex, int endIndex) {
+    private void createClients(CreateRealmContext context, TimerLogger timerLogger, KeycloakSession session, final int startIndex, final int endIndex) {
         RealmModel realm = context.getRealm();
 
         // Eagerly register invalidation to make sure we don't cache the realm in this transaction. Caching will result in bunch of

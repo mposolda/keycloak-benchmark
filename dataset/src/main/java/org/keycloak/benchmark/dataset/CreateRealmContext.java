@@ -19,6 +19,7 @@
 package org.keycloak.benchmark.dataset;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import org.keycloak.benchmark.dataset.config.DatasetConfig;
@@ -42,16 +43,16 @@ public class CreateRealmContext {
 
     private RealmModel realm;
 
-    private List<ClientModel> clients = new ArrayList<>();
+    private List<ClientModel> clients = Collections.synchronizedList(new ArrayList<>());
 
     private List<RoleModel> realmRoles = new ArrayList<>();
 
     // All client roles of all clients
-    private List<RoleModel> clientRoles = new ArrayList<>();
+    private List<RoleModel> clientRoles = Collections.synchronizedList(new ArrayList<>());
 
     private List<GroupModel> groups = new ArrayList<>();
 
-    private final List<UserModel> users = new ArrayList<>();
+    private final List<UserModel> users = Collections.synchronizedList(new ArrayList<>());
 
     public CreateRealmContext(DatasetConfig config) {
         this.config = config;
@@ -78,7 +79,7 @@ public class CreateRealmContext {
     }
 
     public void setClients(List<ClientModel> clients) {
-        this.clients = clients;
+        this.clients = Collections.synchronizedList(clients);
     }
 
     public void realmRoleCreated(RoleModel role) {
@@ -102,7 +103,7 @@ public class CreateRealmContext {
     }
 
     public void setClientRoles(List<RoleModel> clientRoles) {
-        this.clientRoles = clientRoles;
+        this.clientRoles = Collections.synchronizedList(clientRoles);
     }
 
     public void groupCreated(GroupModel group) {
