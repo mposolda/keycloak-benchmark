@@ -18,17 +18,22 @@
 
 package org.keycloak.benchmark.dataset.config;
 
+import org.keycloak.credential.hash.Pbkdf2PasswordHashProviderFactory;
+
 import static org.keycloak.benchmark.dataset.config.DatasetOperation.CREATE_CLIENTS;
 import static org.keycloak.benchmark.dataset.config.DatasetOperation.CREATE_REALMS;
 import static org.keycloak.benchmark.dataset.config.DatasetOperation.CREATE_USERS;
 
 /**
+ * Configuration parameters, which can be send to the particular datasource operation. They can be send for example through HTTP request
+ * query parameters
+ *
  * @author <a href="mailto:mposolda@redhat.com">Marek Posolda</a>
  */
 public class DatasetConfig implements Config {
 
     // Used when creating many realms as a prefix. For example when prefix us "foo", we will create realms like "foo0", "foo1" etc.
-    @QueryParamFill(paramName = "realm-prefix", defaultValue = DatasetConstants.DEFAULT_REALM_PREFIX, operations = { CREATE_REALMS })
+    @QueryParamFill(paramName = "realm-prefix", defaultValue = "realm", operations = { CREATE_REALMS })
     private String realmPrefix;
 
     // Realm-name is required when creating many clients or users. The realm where clients/users will be created must already exists
@@ -38,23 +43,23 @@ public class DatasetConfig implements Config {
     // NOTE: Start index is not available as parameter as it will be "auto-detected" based on already created realms (clients, users)
     private Integer start;
 
-    // Count of entities to be created
+    // Count of entities to be created. Entity is realm, client or user based on the operation
     @QueryParamIntFill(paramName = "count", required = true, operations = { CREATE_REALMS, CREATE_CLIENTS, CREATE_USERS })
     private Integer count;
 
     // Prefix for realm roles to create in every realm (in case of CREATE_REALMS) or to assign to users (in case of CREATE_USERS)
-    @QueryParamFill(paramName = "realm-role-prefix", defaultValue = DatasetConstants.DEFAULT_REALM_ROLE_PREFIX, operations = { CREATE_REALMS, CREATE_USERS })
+    @QueryParamFill(paramName = "realm-role-prefix", defaultValue = "role-", operations = { CREATE_REALMS, CREATE_USERS })
     private String realmRolePrefix;
 
     // Count of realm roles to be created in every created realm
-    @QueryParamIntFill(paramName = "realm-roles-per-realm", defaultValue = DatasetConstants.DEFAULT_REALM_ROLES_PER_REALM, operations = { CREATE_REALMS })
+    @QueryParamIntFill(paramName = "realm-roles-per-realm", defaultValue = 25, operations = { CREATE_REALMS })
     private Integer realmRolesPerRealm;
 
     // Prefix for newly created clients (in case of CREATE_REALMS and CREATE_CLIENTS). In case of CREATE_USERS it is used to find the clients with clientRoles, which will be assigned to users
-    @QueryParamFill(paramName = "client-prefix", defaultValue = DatasetConstants.DEFAULT_CLIENT_PREFIX, operations = { CREATE_REALMS, CREATE_CLIENTS, CREATE_USERS })
+    @QueryParamFill(paramName = "client-prefix", defaultValue = "client-", operations = { CREATE_REALMS, CREATE_CLIENTS, CREATE_USERS })
     private String clientPrefix;
 
-    @QueryParamIntFill(paramName = "clients-per-realm", defaultValue = DatasetConstants.DEFAULT_CLIENTS_PER_REALM, operations = { CREATE_REALMS })
+    @QueryParamIntFill(paramName = "clients-per-realm", defaultValue = 30, operations = { CREATE_REALMS })
     private Integer clientsPerRealm;
 
     // Count of clients created in every DB transaction
@@ -62,55 +67,60 @@ public class DatasetConfig implements Config {
     private Integer clientsPerTransaction;
 
     // Prefix of clientRoles to be created (in case of CREATE_REALMS and CREATE_CLIENTS). In case of CREATE_USERS it is used to find the clientRoles, which will be assigned to users
-    @QueryParamFill(paramName = "client-role-prefix", defaultValue = DatasetConstants.DEFAULT_CLIENT_ROLE_PREFIX, operations = { CREATE_REALMS, CREATE_CLIENTS, CREATE_USERS })
+    @QueryParamFill(paramName = "client-role-prefix", defaultValue = "client-role-", operations = { CREATE_REALMS, CREATE_CLIENTS, CREATE_USERS })
     private String clientRolePrefix;
 
-    @QueryParamIntFill(paramName = "client-roles-per-client", defaultValue = DatasetConstants.DEFAULT_CLIENT_ROLES_PER_CLIENT, operations = { CREATE_REALMS, CREATE_CLIENTS })
+    // When creating clients, every client will have this amount of client roles created
+    @QueryParamIntFill(paramName = "client-roles-per-client", defaultValue = 10, operations = { CREATE_REALMS, CREATE_CLIENTS })
     private Integer clientRolesPerClient;
 
-    @QueryParamFill(paramName = "group-prefix", defaultValue = DatasetConstants.DEFAULT_GROUPS_PREFIX, operations = { CREATE_REALMS, CREATE_USERS })
+    // Prefix of groups to be created (in case of CREATE_REALMS operation) or assigned to the users (In case of CREATE_USERS and CREATE_REALMS operations)
+    @QueryParamFill(paramName = "group-prefix", defaultValue = "group-", operations = { CREATE_REALMS, CREATE_USERS })
     private String groupPrefix;
 
-    @QueryParamIntFill(paramName = "groups-per-realm", defaultValue = DatasetConstants.DEFAULT_GROUPS_PER_REALM, operations = { CREATE_REALMS })
+    // Count of groups to be created in every created realm
+    @QueryParamIntFill(paramName = "groups-per-realm", defaultValue = 20, operations = { CREATE_REALMS })
     private Integer groupsPerRealm;
 
-    @QueryParamFill(paramName = "user-prefix", defaultValue = DatasetConstants.DEFAULT_USERS_PREFIX, operations = { CREATE_REALMS, CREATE_USERS })
+    // Prefix for newly created users
+    @QueryParamFill(paramName = "user-prefix", defaultValue = "user-", operations = { CREATE_REALMS, CREATE_USERS })
     private String userPrefix;
 
-    // Count of users to be created in every realm (In case of CREATE_REALMS) or in specified realm (In case of CREATE_USERS)
-    @QueryParamIntFill(paramName = "users-per-realm", defaultValue = DatasetConstants.DEFAULT_USERS_PER_REALM, operations = { CREATE_REALMS })
+    // Count of users to be created in every realm (In case of CREATE_REALMS)
+    @QueryParamIntFill(paramName = "users-per-realm", defaultValue = 200, operations = { CREATE_REALMS })
     private Integer usersPerRealm;
 
     // Count of groups assigned to every user
-    @QueryParamIntFill(paramName = "groups-per-user", defaultValue = DatasetConstants.DEFAULT_GROUPS_PER_USER, operations = { CREATE_REALMS, CREATE_USERS })
+    @QueryParamIntFill(paramName = "groups-per-user", defaultValue = 4, operations = { CREATE_REALMS, CREATE_USERS })
     private Integer groupsPerUser;
 
     // Count of realm roles assigned to every user. The roles assigned are not random, but depends on the "index" of the current user and total amount of roles available and assigned to each user
-    @QueryParamIntFill(paramName = "realm-roles-per-user", defaultValue = DatasetConstants.DEFAULT_REALM_ROLES_PER_USER, operations = { CREATE_REALMS, CREATE_USERS })
+    @QueryParamIntFill(paramName = "realm-roles-per-user", defaultValue = 4, operations = { CREATE_REALMS, CREATE_USERS })
     private Integer realmRolesPerUser;
 
     // Count of client roles assigned to every user. The roles assigned are not random, but depends on the "index" of the current user and total amount of roles available and assigned to each user
-    @QueryParamIntFill(paramName = "client-roles-per-user", defaultValue = DatasetConstants.DEFAULT_CLIENT_ROLES_PER_USER, operations = { CREATE_REALMS, CREATE_USERS })
+    @QueryParamIntFill(paramName = "client-roles-per-user", defaultValue = 4, operations = { CREATE_REALMS, CREATE_USERS })
     private Integer clientRolesPerUser;
 
     // Password policy with the amount of password hash iterations. It is 20000 by default
-    @QueryParamIntFill(paramName = "password-hash-iterations", defaultValue = DatasetConstants.DEFAULT_HASH_ITERATIONS, operations = { CREATE_REALMS })
+    @QueryParamIntFill(paramName = "password-hash-iterations", defaultValue = Pbkdf2PasswordHashProviderFactory.DEFAULT_ITERATIONS, operations = { CREATE_REALMS })
     private Integer passwordHashIterations;
 
     // Transaction timeout used for transactions for creating objects
-    @QueryParamIntFill(paramName = "transaction-timeout", defaultValue = DatasetConstants.DEFAULT_TRANSACTION_TIMEOUT_SEC, operations = { CREATE_REALMS, CREATE_CLIENTS, CREATE_USERS })
+    @QueryParamIntFill(paramName = "transaction-timeout", defaultValue = 300, operations = { CREATE_REALMS, CREATE_CLIENTS, CREATE_USERS })
     private Integer transactionTimeoutInSeconds;
 
     // Count of users created in every transaction
-    @QueryParamIntFill(paramName = "users-per-transaction", defaultValue = DatasetConstants.DEFAULT_USERS_PER_TRANSACTION, operations = { CREATE_REALMS, CREATE_USERS })
+    @QueryParamIntFill(paramName = "users-per-transaction", defaultValue = 10, operations = { CREATE_REALMS, CREATE_USERS })
     private Integer usersPerTransaction;
 
     // Count of worker threads concurrently creating entities
     @QueryParamIntFill(paramName = "threads-count", defaultValue = 5, operations = { CREATE_REALMS, CREATE_CLIENTS, CREATE_USERS })
     private Integer threadsCount;
 
-    // Timeout for the task
-    @QueryParamIntFill(paramName = "task-timeout", defaultValue = 1800, operations = { CREATE_REALMS, CREATE_CLIENTS, CREATE_USERS })
+    // Timeout for the whole task. If timeout expires, then the existing task may not be terminated immediatelly. However it will be permitted to start another task
+    // (EG. Send another HTTP request for creating realms), which can cause conflicts
+    @QueryParamIntFill(paramName = "task-timeout", defaultValue = 3600, operations = { CREATE_REALMS, CREATE_CLIENTS, CREATE_USERS })
     private Integer taskTimeout;
 
     // String representation of this configuration (cached here to not be computed in runtime)
