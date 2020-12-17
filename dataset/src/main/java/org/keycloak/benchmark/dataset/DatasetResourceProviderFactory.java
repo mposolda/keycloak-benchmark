@@ -32,7 +32,8 @@ import org.keycloak.services.resource.RealmResourceProviderFactory;
  */
 public class DatasetResourceProviderFactory implements RealmResourceProviderFactory  {
 
-    public static final String ID = "dataset";
+    // TODO:mposolda dont commit this
+    public static final String ID = "datasett";
 
     @Override
     public String getId() {

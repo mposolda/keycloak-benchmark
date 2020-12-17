@@ -31,7 +31,8 @@ import org.keycloak.services.resource.RealmResourceProviderFactory;
  */
 public class RemoteCacheResourceProviderFactory implements RealmResourceProviderFactory {
 
-    public static final String ID = "remote-cache";
+    // TODO:mposolda Dont commit this
+    public static final String ID = "remote-cachee";
 
     @Override
     public String getId() {

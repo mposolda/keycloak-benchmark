@@ -44,14 +44,14 @@ public class RemoteCacheResource {
 
     protected static final Logger logger = Logger.getLogger(RemoteCacheResource.class);
 
+    private final Cache cache;
     private final RemoteCache remoteCache;
 
     public RemoteCacheResource(KeycloakSession session, String cacheName) {
         InfinispanConnectionProvider provider = session.getProvider(InfinispanConnectionProvider.class);
-        Cache<Object, Object> cache = null;
         try {
-            cache = provider.getCache(cacheName);
-        } catch (CacheConfigurationException cce) {
+            this.cache = provider.getCache(cacheName);
+        } catch (RuntimeException cce) {
             logger.error(cce.getMessage());
             throw new NotFoundException("Cache does not exists");
         }
@@ -70,8 +70,9 @@ public class RemoteCacheResource {
     @NoCache
     @Produces(MediaType.APPLICATION_JSON)
     public TaskResponse clear() {
+        cache.clear();
         remoteCache.clear();
-        logger.infof("Remote cache %s cleared successfully", remoteCache.getName());
+        logger.infof("Cache %s and remote cache %s cleared successfully", cache.getName(), remoteCache.getName());
         return TaskResponse.statusMessage("Remote cache " + remoteCache.getName() + " cleared successfully");
     }
 
